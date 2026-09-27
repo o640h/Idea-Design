@@ -32,10 +32,10 @@ the NAS with Cloudflare Tunnel as the alternative deployment option.
 
 ### 1.3 Add Continuous Integration
 
-- [ ] Run lint, type checking, focused tests and build in GitHub Actions.
-- [ ] Use locked dependencies, minimal token permissions and job timeouts.
-- [ ] Check migrations against a clean local database in CI.
-- [ ] Require passing checks before merging into `main`.
+- [x] Run lint, type checking, focused tests and build in GitHub Actions.
+- [x] Use locked dependencies, minimal token permissions and job timeouts.
+- [x] Check migrations against a clean local database in CI.
+- [x] Require passing checks before merging into `main`.
 
 ## Phase 2 — Create and Reopen a Concept
 
