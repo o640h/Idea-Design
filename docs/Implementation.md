@@ -28,7 +28,7 @@ the NAS with Cloudflare Tunnel as the alternative deployment option.
 - [x] Create a Next.js application with TypeScript at the repository root.
 - [x] Add React Flow for editable nodes, connections and canvas navigation.
 - [ ] Separate editor UI, concept operations and persistence responsibilities.
-- [ ] Create a local Supabase environment and version database migrations.
+- [x] Create a local Supabase environment and version database migrations.
 - [ ] Confirm a fresh clone can install, start and build the application.
 
 ### 1.3 Add Continuous Integration

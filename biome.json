@@ -30,10 +30,6 @@
     }
   },
   "assist": {
-    "actions": {
-      "source": {
-        "organizeImports": "on"
-      }
-    }
+    "enabled": false
   }
 }
