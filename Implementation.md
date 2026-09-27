@@ -8,6 +8,9 @@ Use React, TypeScript, Next.js and React Flow, with Supabase for accounts and
 PostgreSQL storage. Keep concept operations independent of the interface.
 Use IndexedDB for draft recovery and server-side AI for optional assistance.
 
+Keep the single Next.js application at the repository root, with routes in
+`app/` and static assets in `public/`. Run pnpm and Biome from that root.
+
 Develop locally and use Vercel Hobby only for eligible non-commercial previews.
 Launch on Vercel Pro with Supabase Free, upgrading as usage requires. Retain
 the NAS with Cloudflare Tunnel as the alternative deployment option.
@@ -16,14 +19,14 @@ the NAS with Cloudflare Tunnel as the alternative deployment option.
 
 ### 1.1 Set Up the Repository
 
-- [ ] Initialise Git and connect the intended GitHub repository.
-- [ ] Add a short README, `.gitignore` and example environment file.
-- [ ] Keep credentials, local data and generated files out of Git.
+- [x] Initialise Git and connect the intended GitHub repository.
+- [x] Add a short README, `.gitignore` and example environment file.
+- [x] Keep credentials, local data and generated files out of Git.
 
 ### 1.2 Create the Application
 
-- [ ] Create a Next.js application with TypeScript in `apps/web`.
-- [ ] Add React Flow for editable nodes, connections and canvas navigation.
+- [x] Create a Next.js application with TypeScript at the repository root.
+- [x] Add React Flow for editable nodes, connections and canvas navigation.
 - [ ] Separate editor UI, concept operations and persistence responsibilities.
 - [ ] Create a local Supabase environment and version database migrations.
 - [ ] Confirm a fresh clone can install, start and build the application.

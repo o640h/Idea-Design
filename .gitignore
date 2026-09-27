@@ -7,6 +7,7 @@ build/
 coverage/
 *.tsbuildinfo
 .vercel/
+next-env.d.ts
 
 # Environment files; commit examples only
 .env
