@@ -1,9 +1,5 @@
-import ConceptCanvas from "./concept_canvas";
+import ConceptEditor from "./concept_editor";
 
 export default function Home() {
-  return (
-    <main className="h-dvh">
-      <ConceptCanvas />
-    </main>
-  );
+  return <ConceptEditor />;
 }

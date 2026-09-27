@@ -1,26 +1,50 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: dark;
+  --background: #181818;
+  --foreground: #d0d0d0;
+  --editor-stage: #0d0d0d;
+  --editor-shell: #181818;
+  --editor-canvas: #151515;
+  --editor-rail: #121212;
+  --editor-header-border: #121212;
+  --editor-canvas-border: #222222;
+  --editor-rail-border: #232323;
+  --editor-nav-active: #181818;
+  --editor-nav-idle: #131313;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+html,
+body {
+  height: 100%;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+.editor-stage {
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+  overflow: auto;
+  padding: 24px;
+  background: var(--editor-stage);
+}
+
+.editor-window {
+  width: min(1440px, calc(100vw - 48px));
+  height: min(900px, calc(100dvh - 48px));
+  overflow: hidden;
+  border: 1px solid var(--editor-canvas-border);
+  border-radius: 12px;
+  background: var(--editor-shell);
 }
 
 body {
+  margin: 0;
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+button:disabled {
+  cursor: default;
 }

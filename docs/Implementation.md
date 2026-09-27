@@ -50,7 +50,7 @@ the NAS with Cloudflare Tunnel as the alternative deployment option.
 
 ### 2.2 Build the First Editor
 
-- [ ] Translate the Figma shell into shared colours, type, spacing and layout.
+- [x] Translate the Figma shell into shared colours, type, spacing and layout.
 - [ ] Create a concept, edit its description and add its first component.
 - [ ] Rename, edit, connect and remove components directly in the editor.
 - [ ] Allow users to leave components untyped and relationships unlabelled.
