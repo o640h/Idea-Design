@@ -35,19 +35,18 @@ the NAS with Cloudflare Tunnel as the alternative deployment option.
 - [x] Run lint, type checking, focused tests and build in GitHub Actions.
 - [x] Use locked dependencies, minimal token permissions and job timeouts.
 - [x] Check migrations against a clean local database in CI.
-- [ ] Require passing checks before merging into `main`.
 
 ## Phase 2 — Create and Reopen a Concept
 
 ### 2.1 Define the Concept Model
 
-- [ ] Store projects, concepts, components and relationships with stable IDs.
-- [ ] Allow a concept to begin with a title and unstructured description.
-- [ ] Make component types optional: goal, mechanism, actor, constraint,
+- [x] Store projects, concepts, components and relationships with stable IDs.
+- [x] Allow a concept to begin with a title and unstructured description.
+- [x] Make component types optional: goal, mechanism, actor, constraint,
   assumption, unknown and evidence.
-- [ ] Separate containment from dependencies and other semantic relationships.
-- [ ] Store node positions and viewport state separately from concept content.
-- [ ] Version the saved document format so stored projects remain readable.
+- [x] Separate containment from dependencies and other semantic relationships.
+- [x] Store node positions and viewport state separately from concept content.
+- [x] Version the saved document format so stored projects remain readable.
 
 ### 2.2 Build the First Editor
 
