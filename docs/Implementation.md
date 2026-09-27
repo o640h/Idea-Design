@@ -1,7 +1,7 @@
 # Idea Design Implementation
 
 Build a concept design environment for exploring alternatives without losing
-the original idea or its reasoning. Make concepts editable, comparable and
+the original idea or Iits reasoning. Make concepts editable, comparable and
 traceable through branching, selective merging and history.
 
 Use React, TypeScript, Next.js and React Flow, with Supabase for accounts and
