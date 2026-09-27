@@ -1,0 +1,28 @@
+# Dependencies and generated output
+node_modules/
+.next/
+out/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+.vercel/
+
+# Environment files; commit examples only
+.env
+.env.*
+!.env.example
+
+# Local data and Supabase state
+data/
+*.db
+*.sqlite
+*.sqlite3
+supabase/.branches/
+supabase/.temp/
+
+# Local editor and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
