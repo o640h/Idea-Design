@@ -1,4 +1,4 @@
-import ConceptEditor from "./concept_editor";
+import ConceptEditor from "./concept/editor";
 
 export default function Home() {
   return <ConceptEditor />;
