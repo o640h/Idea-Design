@@ -230,15 +230,15 @@ export default function ConceptEditor() {
             }`}
             aria-label="Editor Navigation"
           >
-            <nav className="my-1.5 ml-1.5 flex w-8 shrink-0 flex-col rounded-md border-[0.5px] border-[var(--border-rail)] bg-[var(--surface-rail)] p-0.5">
-              <div className="flex flex-col items-center gap-0.5">
+            <nav className="my-1.5 ml-1.5 flex w-8 shrink-0 flex-col rounded-md bg-[var(--surface-rail)] p-1 shadow-[inset_0_0_0_1px_var(--border-rail)]">
+              <div className="flex flex-col gap-1">
                 <button
                   type="button"
                   aria-label="Concepts"
                   aria-expanded={panelOpen}
                   aria-controls="concepts-panel"
                   onClick={() => setPanelOpen((open) => !open)}
-                  className="grid size-[26px] place-items-center rounded-sm bg-[var(--surface-shell)]"
+                  className="flex h-6 w-full shrink-0 items-center justify-center rounded-sm bg-[var(--surface-shell)]"
                 >
                   <Squircle {...railIconProps} />
                 </button>
@@ -248,7 +248,7 @@ export default function ConceptEditor() {
                     type="button"
                     aria-label={label}
                     disabled
-                    className="grid size-[26px] place-items-center rounded-sm bg-[var(--surface-idle)]"
+                    className="flex h-6 w-full shrink-0 items-center justify-center rounded-sm bg-[var(--surface-idle)]"
                   >
                     <Icon {...railIconProps} />
                   </button>
@@ -259,7 +259,7 @@ export default function ConceptEditor() {
                 type="button"
                 aria-label="Settings"
                 disabled
-                className="mt-auto grid size-[26px] self-center place-items-center rounded-sm bg-[var(--surface-canvas)]"
+                className="mt-auto flex h-6 w-full shrink-0 items-center justify-center rounded-sm bg-[var(--surface-canvas)]"
               >
                 <Settings {...railIconProps} />
               </button>
