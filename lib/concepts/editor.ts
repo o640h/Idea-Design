@@ -1,12 +1,15 @@
-import type {
-  ComponentId,
-  ComponentPosition,
-  Concept,
-  ConceptComponent,
-  ConceptLayout,
-  ConceptRelationship,
-  ConceptViewport,
-  RelationshipId,
+import {
+  type ComponentId,
+  type ComponentLayout,
+  type ComponentTextField,
+  type Concept,
+  type ConceptComponent,
+  type ConceptLayout,
+  type ConceptRelationship,
+  type ConceptViewport,
+  DEFAULT_TEXT_FORMATS,
+  type RelationshipId,
+  type TextFormat,
 } from "./model";
 
 export type EditorSelection =
@@ -16,7 +19,7 @@ export type EditorSelection =
 
 export interface EditableConcept {
   concept: Concept;
-  positions: ComponentPosition[];
+  componentLayouts: ComponentLayout[];
 }
 
 export interface EditorState {
@@ -27,6 +30,8 @@ export interface EditorState {
   selection: EditorSelection;
 }
 
+type Position = Pick<ComponentLayout, "x" | "y">;
+
 export type EditorAction =
   | {
       type: "concept/update";
@@ -35,20 +40,22 @@ export type EditorAction =
   | {
       type: "component/add";
       component: ConceptComponent;
-      position: Pick<ComponentPosition, "x" | "y">;
+      position: Position;
     }
   | {
       type: "component/update";
       id: ComponentId;
       changes: Partial<
-        Pick<ConceptComponent, "title" | "description" | "type" | "parentId">
+        Pick<ConceptComponent, "title" | "description" | "tag" | "parentId">
       >;
     }
   | { type: "component/remove"; id: ComponentId }
+  | { type: "component/move"; id: ComponentId; position: Position }
   | {
-      type: "component/move";
+      type: "component/format";
       id: ComponentId;
-      position: Pick<ComponentPosition, "x" | "y">;
+      field: ComponentTextField;
+      changes: Partial<TextFormat>;
     }
   | { type: "relationship/add"; relationship: ConceptRelationship }
   | {
@@ -74,7 +81,7 @@ export function createEditorState(
     past: [],
     present: {
       concept,
-      positions: [...layout.positions],
+      componentLayouts: [...layout.components],
     },
     future: [],
     viewport: layout.viewport,
@@ -85,7 +92,7 @@ export function createEditorState(
 export function getConceptLayout(state: EditorState): ConceptLayout {
   return {
     conceptId: state.present.concept.id,
-    positions: state.present.positions,
+    components: state.present.componentLayouts,
     viewport: state.viewport,
   };
 }
@@ -131,6 +138,47 @@ function redo(state: EditorState): EditorState {
   };
 }
 
+function sameFormat(a: TextFormat, b: TextFormat) {
+  return (
+    a.fontSize === b.fontSize &&
+    a.fontWeight === b.fontWeight &&
+    a.opacity === b.opacity &&
+    a.italic === b.italic
+  );
+}
+
+function updateComponentLayout(
+  state: EditorState,
+  id: ComponentId,
+  update: (layout: ComponentLayout) => ComponentLayout,
+): EditorState {
+  const layout = state.present.componentLayouts.find(
+    (candidate) => candidate.componentId === id,
+  );
+
+  if (!layout) {
+    return state;
+  }
+
+  const updatedLayout = update(layout);
+
+  if (
+    updatedLayout.x === layout.x &&
+    updatedLayout.y === layout.y &&
+    sameFormat(updatedLayout.formats.title, layout.formats.title) &&
+    sameFormat(updatedLayout.formats.description, layout.formats.description)
+  ) {
+    return state;
+  }
+
+  return commit(state, {
+    ...state.present,
+    componentLayouts: state.present.componentLayouts.map((candidate) =>
+      candidate.componentId === id ? updatedLayout : candidate,
+    ),
+  });
+}
+
 export function editorReducer(
   state: EditorState,
   action: EditorAction,
@@ -163,9 +211,13 @@ export function editorReducer(
           ...state.present.concept,
           components: [...state.present.concept.components, action.component],
         },
-        positions: [
-          ...state.present.positions,
-          { componentId: action.component.id, ...action.position },
+        componentLayouts: [
+          ...state.present.componentLayouts,
+          {
+            componentId: action.component.id,
+            ...action.position,
+            formats: DEFAULT_TEXT_FORMATS,
+          },
         ],
       });
     }
@@ -184,7 +236,7 @@ export function editorReducer(
       if (
         updatedComponent.title === component.title &&
         updatedComponent.description === component.description &&
-        updatedComponent.type === component.type &&
+        updatedComponent.tag === component.tag &&
         updatedComponent.parentId === component.parentId
       ) {
         return state;
@@ -238,8 +290,8 @@ export function editorReducer(
             (relationship) => !removedRelationshipIds.has(relationship.id),
           ),
         },
-        positions: state.present.positions.filter(
-          (position) => position.componentId !== action.id,
+        componentLayouts: state.present.componentLayouts.filter(
+          (layout) => layout.componentId !== action.id,
         ),
       });
 
@@ -248,35 +300,23 @@ export function editorReducer(
         : nextState;
     }
 
-    case "component/move": {
-      if (
-        !state.present.concept.components.some(
-          (component) => component.id === action.id,
-        )
-      ) {
-        return state;
-      }
+    case "component/move":
+      return updateComponentLayout(state, action.id, (layout) => ({
+        ...layout,
+        ...action.position,
+      }));
 
-      const currentPosition = state.present.positions.find(
-        (position) => position.componentId === action.id,
-      );
-
-      if (
-        currentPosition?.x === action.position.x &&
-        currentPosition.y === action.position.y
-      ) {
-        return state;
-      }
-
-      const movedPosition = { componentId: action.id, ...action.position };
-      const positions = currentPosition
-        ? state.present.positions.map((position) =>
-            position.componentId === action.id ? movedPosition : position,
-          )
-        : [...state.present.positions, movedPosition];
-
-      return commit(state, { ...state.present, positions });
-    }
+    case "component/format":
+      return updateComponentLayout(state, action.id, (layout) => ({
+        ...layout,
+        formats: {
+          ...layout.formats,
+          [action.field]: {
+            ...layout.formats[action.field],
+            ...action.changes,
+          },
+        },
+      }));
 
     case "relationship/add": {
       if (

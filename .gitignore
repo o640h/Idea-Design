@@ -23,7 +23,9 @@ supabase/.branches/
 supabase/.temp/
 
 # Local editor and OS files
+.claude
 .idea/
 .vscode/
 .DS_Store
 Thumbs.db
+idea-design-handoff

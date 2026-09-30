@@ -1,17 +1,17 @@
 export const CURRENT_PROJECT_DOCUMENT_VERSION = 1 as const;
 
-export const COMPONENT_TYPES = [
+/** Offered when tagging a component; users can also write their own tag. */
+export const SUGGESTED_TAGS = [
   "goal",
+  "principle",
   "mechanism",
   "actor",
   "constraint",
   "assumption",
-  "unknown",
   "evidence",
 ] as const;
 
 export type ProjectDocumentVersion = typeof CURRENT_PROJECT_DOCUMENT_VERSION;
-export type ComponentType = (typeof COMPONENT_TYPES)[number];
 
 export type ProjectId = string;
 export type ConceptId = string;
@@ -36,7 +36,8 @@ export interface ConceptComponent {
   id: ComponentId;
   title: string;
   description: string;
-  type: ComponentType | null;
+  /** A lowercase label such as "goal". Null leaves the component untagged. */
+  tag: string | null;
 
   /** Containment is a hierarchy and is not represented as a semantic edge. */
   parentId: ComponentId | null;
@@ -51,11 +52,27 @@ export interface ConceptRelationship {
   type: string | null;
 }
 
-export interface ComponentPosition {
+export type ComponentTextField = "title" | "description";
+
+export interface TextFormat {
+  fontSize: number;
+  fontWeight: 300 | 400 | 500;
+  opacity: number;
+  italic: boolean;
+}
+
+/** How a component is placed and styled; kept apart from its content. */
+export interface ComponentLayout {
   componentId: ComponentId;
   x: number;
   y: number;
+  formats: Record<ComponentTextField, TextFormat>;
 }
+
+export const DEFAULT_TEXT_FORMATS: ComponentLayout["formats"] = {
+  title: { fontSize: 13, fontWeight: 300, opacity: 1, italic: false },
+  description: { fontSize: 10, fontWeight: 300, opacity: 0.85, italic: false },
+};
 
 export interface ConceptViewport {
   x: number;
@@ -65,7 +82,7 @@ export interface ConceptViewport {
 
 export interface ConceptLayout {
   conceptId: ConceptId;
-  positions: ComponentPosition[];
+  components: ComponentLayout[];
   viewport: ConceptViewport;
 }
 
@@ -78,3 +95,11 @@ export interface ProjectDocumentV1 {
 
 /** Add future document versions to this union after defining their migration. */
 export type ProjectDocument = ProjectDocumentV1;
+
+export function createComponent(id: ComponentId): ConceptComponent {
+  return { id, title: "", description: "", tag: null, parentId: null };
+}
+
+export function normaliseTag(tag: string) {
+  return tag.trim().toLowerCase();
+}

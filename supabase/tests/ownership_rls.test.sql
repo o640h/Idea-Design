@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(18);
+select plan(22);
 
 insert into auth.users (id, email) values
   ('11111111-1111-4111-8111-111111111111', 'owner@example.test'),
@@ -15,7 +15,7 @@ insert into public.concepts (id, project_id, title) values
   ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Owner concept'),
   ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'Other concept');
 
-insert into public.components (id, concept_id, title, component_type) values
+insert into public.components (id, concept_id, title, tag) values
   ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'Owner goal', 'goal'),
   ('ffffffff-ffff-4fff-8fff-ffffffffffff', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'Owner mechanism', 'mechanism'),
   ('33333333-3333-4333-8333-333333333333', 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', 'Other goal', 'goal'),
@@ -43,13 +43,38 @@ insert into public.relationships (
     null
   );
 
-insert into public.component_positions (concept_id, component_id, x, y) values
+insert into public.component_layouts (concept_id, component_id, x, y) values
   ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 120, 80),
   ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', '33333333-3333-4333-8333-333333333333', 40, 60);
 
 insert into public.concept_viewports (concept_id, x, y, zoom) values
   ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 10, 20, 1.25),
   ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', 0, 0, 1);
+
+select results_eq(
+  'select title_font_weight, description_font_weight, title_opacity, description_opacity
+   from public.component_layouts where component_id = ''eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee''',
+  $$values (300, 300, 1::double precision, 0.85::double precision)$$,
+  'Text format defaults match the editor'
+);
+
+select lives_ok(
+  $$update public.component_layouts set title_font_weight = 400, title_opacity = 0.5
+    where component_id = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'$$,
+  'Layouts accept Medium weight and partial opacity'
+);
+
+select throws_ok(
+  $$update public.component_layouts set title_font_weight = 600$$,
+  '23514', null,
+  'Layouts reject unsupported weights'
+);
+
+select throws_ok(
+  $$update public.component_layouts set description_opacity = 1.1$$,
+  '23514', null,
+  'Layouts reject opacity outside zero to one'
+);
 
 set local role authenticated;
 set local request.jwt.claim.sub = '11111111-1111-4111-8111-111111111111';
@@ -79,9 +104,9 @@ select results_eq(
 );
 
 select results_eq(
-  'select count(*) from public.component_positions',
+  'select count(*) from public.component_layouts',
   array[1::bigint],
-  'Owner sees only positions in their concepts'
+  'Owner sees only layouts in their concepts'
 );
 
 select results_eq(
@@ -107,9 +132,9 @@ select lives_ok(
     values (
       '77777777-7777-4777-8777-777777777777',
       'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
-      'Untyped component'
+      'Untagged component'
     )$$,
-  'Owner can add an untyped component to their concept'
+  'Owner can add an untagged component to their concept'
 );
 
 select throws_ok(
@@ -168,9 +193,9 @@ select results_eq(
 );
 
 select results_eq(
-  'select count(*) from public.component_positions',
+  'select count(*) from public.component_layouts',
   array[0::bigint],
-  'Anonymous users see no component positions'
+  'Anonymous users see no component layouts'
 );
 
 select results_eq(

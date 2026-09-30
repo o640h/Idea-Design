@@ -1,7 +1,7 @@
 # Idea Design Implementation
 
 Build a concept design environment for exploring alternatives without losing
-the original idea or Iits reasoning. Make concepts editable, comparable and
+the original idea or its reasoning. Make concepts editable, comparable and
 traceable through branching, selective merging and history.
 
 Use React, TypeScript, Next.js and React Flow, with Supabase for accounts and
@@ -42,30 +42,48 @@ the NAS with Cloudflare Tunnel as the alternative deployment option.
 
 - [x] Store projects, concepts, components and relationships with stable IDs.
 - [x] Allow a concept to begin with a title and unstructured description.
-- [x] Make component types optional: goal, mechanism, actor, constraint,
-  assumption, unknown and evidence.
+- [x] Give components an optional single tag, suggesting goal, principle,
+  mechanism, actor, constraint, assumption and evidence alongside custom tags.
 - [x] Separate containment from dependencies and other semantic relationships.
-- [x] Store node positions and viewport state separately from concept content.
+- [x] Store node positions, title and description formatting and viewport state
+  separately from concept content.
 - [x] Version the saved document format so stored projects remain readable.
 
 ### 2.2 Build the First Editor
 
 - [x] Translate the Figma shell into shared colours, type, spacing and layout.
-- [ ] Create a concept, edit its description and add its first component.
-- [ ] Rename, edit, connect and remove components directly in the editor.
-- [ ] Allow users to leave components untyped and relationships unlabelled.
-- [ ] Add selection, pan, zoom, fit-to-content and a focused detail panel.
-- [ ] Provide keyboard access to the same content through an outline view.
-- [ ] Add session undo and redo for content edits and graph operations.
+- [x] Create a concept, edit its description and add its first component.
+- [x] Rename, edit, connect and remove components directly in the editor.
+- [x] Allow users to leave components untagged and relationships unlabelled.
+- [x] Add selection, pan, zoom, fit-to-content and a text bar anchored to the
+  selected component, instead of a side panel. The bar sets the tag and the
+  size, weight, opacity and italic of the title or description being edited, previewing
+  sizes, weights and opacity on hover without committing the preview.
+- [x] Toggle component borders and tag labels from the canvas display menu.
+- [x] Add right-click menus for components, connections and the canvas, and
+  create, rename and delete concepts from the Concepts panel.
+- [x] Create root concepts with the folder button and session alternatives copied
+  from Main with the file button. Switch branches from the Concepts panel;
+  durable branch lineage and history remain in Phase 4.
+- [x] Rename concepts and branches by double-clicking their names, using F2
+  or choosing Rename from their context menu.
+- [x] Provide keyboard access to the same content through an outline view.
+- [x] Add session undo and redo for content edits and graph operations.
 
 ### 2.3 Save Work Safely
 
+- [ ] Record edits in an append-only operation log with periodic snapshots,
+  and open a concept by replaying it. Back undo and redo with the log.
 - [ ] Add account sign-in and private project ownership through Supabase.
+- [ ] Place every concept in a workspace, defaulting to Personal. Create and
+  rename workspaces from the Concepts panel and reopen the last concept used.
 - [ ] Enforce per-user access in database policies and server endpoints.
 - [ ] Autosave working drafts and show Saving, Saved and Save Failed states.
 - [ ] Keep recoverable local drafts in IndexedDB when a save is interrupted.
-- [ ] Detect stale writes from another tab or device before overwriting work.
+- [ ] Detect stale writes from another tab or device before overwriting work,
+  resolving them per component field with last-write-wins.
 - [ ] Let users recover or discard a local draft after reopening the project.
+- [ ] Make deleting a saved concept recoverable rather than immediate.
 - [ ] Export and import the current concept as validated, versioned JSON.
 
 ### 2.4 Verify the First Complete Journey
@@ -83,6 +101,8 @@ the NAS with Cloudflare Tunnel as the alternative deployment option.
   for every relationship in the concept.
 - [ ] Support collapsing, expanding and focusing on a component's contents.
 - [ ] Prevent containment cycles while allowing valid cross-links.
+- [ ] Split and merge components as explicit operations so component identity,
+  and therefore comparison and merging, survives the edit.
 - [ ] Preserve a visible route back to the parent concept and overview.
 
 ### 3.2 Implement Semantic Zoom
@@ -91,7 +111,10 @@ the NAS with Cloudflare Tunnel as the alternative deployment option.
 - [ ] Reveal mechanisms, components and constraints at the middle level.
 - [ ] Reveal assumptions, evidence and detailed descriptions at close range.
 - [ ] Keep selected content and spatial landmarks stable across transitions.
-- [ ] Provide explicit level controls alongside pointer and touch navigation.
+- [ ] Provide a Far, Mid and Near level rail alongside pointer and touch
+  navigation.
+- [ ] Filter components by tag from the display menu, dimming non-matching
+  components rather than hiding them.
 - [ ] Respect reduced motion and preserve focus when detail changes.
 
 ### 3.3 Check Navigation With Real Concepts
@@ -101,11 +124,23 @@ the NAS with Cloudflare Tunnel as the alternative deployment option.
 - [ ] Check rendering and editing with representative larger concepts.
 - [ ] Reduce clutter through progressive disclosure before adding more UI.
 
+### 3.4 Refine Canvas Interaction
+
+- [ ] Snap to the grid and to other components' edges and text baselines with
+  smart guides, holding a modifier key to disable snapping.
+- [ ] Use a custom cursor that matches the canvas while keeping standard
+  meanings, such as the I-beam over text and grab while panning.
+- [ ] Animate handwriting only for newly created or AI-inserted text, keeping
+  it fast and respecting reduced motion.
+- [ ] Format selected ranges within a component if whole-field formatting
+  proves too coarse.
+
 ## Phase 4 — Explore and Compare Alternatives
 
 ### 4.1 Create Branches and Revisions
 
-- [ ] Store immutable revisions separately from mutable working drafts.
+- [ ] Represent branches as pointers to operation-log heads, so revisions,
+  lineage, diffs and rewinding derive from the same log.
 - [ ] Create a revision at branching, named checkpoints and accepted merges.
 - [ ] Branch from a saved revision while preserving inherited component IDs.
 - [ ] Record the source revision, parent branch and divergence point.
@@ -114,9 +149,13 @@ the NAS with Cloudflare Tunnel as the alternative deployment option.
 
 ### 4.2 Make Controlled Changes
 
+- [ ] Explore from a selected component as a mode, showing its branches in a
+  chip; Done keeps them and Discard or Esc drops them.
+- [ ] Change the bottom bar's tools by mode, always keeping undo and redo.
 - [ ] Replace a mechanism or actor within an alternative branch.
 - [ ] Add a constraint or temporarily remove a component in that branch.
-- [ ] Highlight explicitly connected dependencies that may need review.
+- [ ] Mark explicitly connected dependencies that may need review with the
+  attention box, the only box shown besides selection.
 - [ ] Keep possible consequences distinct from changes the user has made.
 - [ ] Make the current branch and unsaved state visible throughout editing.
 
@@ -126,7 +165,8 @@ the NAS with Cloudflare Tunnel as the alternative deployment option.
   relationship types and endpoints.
 - [ ] Identify added, removed and edited content; exclude layout-only changes.
 - [ ] Show before-and-after values with unchanged context available on demand.
-- [ ] Offer a readable comparison alongside the spatial view.
+- [ ] Compare versions side by side from the Compare rail view with
+  per-component merge; defer overlay comparison.
 - [ ] Let users inspect both the divergence revision and current alternatives.
 - [ ] Test branching isolation and comparisons after renaming or removing nodes.
 
@@ -152,7 +192,8 @@ the NAS with Cloudflare Tunnel as the alternative deployment option.
 
 ### 5.3 Navigate Concept Lineage
 
-- [ ] Show branch origins, saved checkpoints and merge events in history.
+- [ ] Show branch origins, saved checkpoints and merge events in the Lineage
+  and History rail views.
 - [ ] Open historical revisions read-only and compare them with current work.
 - [ ] Restore a prior revision as a new revision without erasing later history.
 - [ ] Branch from a historical revision to revisit a discarded direction.
@@ -169,6 +210,11 @@ the NAS with Cloudflare Tunnel as the alternative deployment option.
 
 ### 6.1 Propose an Editable Decomposition
 
+- [ ] Make the orb the only AI entry point. It stays dim when idle and
+  brightens when it has something to show; clicking it toggles an annotation
+  layer, and clicking it with text selected runs structure extraction.
+- [ ] Store AI tag suggestions apart from components as suggested, accepted or
+  dismissed; never apply them without acceptance.
 - [ ] Send only the selected draft text to a server-side model endpoint.
 - [ ] Request structured components and relationships in a validated format.
 - [ ] Preserve the original text and link extracted content to its passages.
@@ -213,7 +259,10 @@ the NAS with Cloudflare Tunnel as the alternative deployment option.
 ### 7.3 Finish the Main User Journey
 
 - [ ] Add a populated example and a clear route from rough text to first concept.
-- [ ] Add project search, recent projects and clear empty and error states.
+- [ ] Add the Search, Bookmarks and Settings rail views, with project search,
+  recent projects and clear empty and error states.
+- [ ] Open a workspace's Home grid of concepts from its name in the Concepts
+  panel.
 - [ ] Check keyboard use, focus, contrast and readable narrow-screen views.
 - [ ] Verify shared links and exports with a separate account and signed-out user.
 
@@ -264,10 +313,18 @@ the NAS with Cloudflare Tunnel as the alternative deployment option.
 - [ ] Make analogy suggestions inspectable as explicit structural mappings.
 - [ ] Evaluate usefulness and correction effort before adopting each capability.
 - [ ] Consider local inference only after measuring quality and device constraints.
+- [ ] Suggest arrangements without moving components until the user accepts.
 
 ### 9.3 Introduce Collaboration When Needed
 
-- [ ] Add explicit project membership and read or edit permissions.
-- [ ] Define simultaneous-edit conflict behaviour separately from concept branching.
+- [ ] Add workspace membership with Owner, Can Edit, Can Comment and Can View
+  roles, and links that allow viewing and forking the Main branch. List shared
+  workspaces under Shared in the Concepts panel.
+- [ ] Show presence only between people on the same branch, with colours
+  reserved for people and cursors matching the custom canvas cursor.
+- [ ] Anchor comments to components and let them become operations.
+- [ ] Define simultaneous-edit conflict behaviour separately from concept
+  branching, starting with last-write-wins per field and adding a CRDT only if
+  text collisions appear.
 - [ ] Test reconnects, permission changes and concurrent edits before release.
 - [ ] Preserve individual authorship and revision history in shared projects.

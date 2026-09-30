@@ -2,22 +2,52 @@
 
 :root {
   color-scheme: dark;
-  --background: #181818;
-  --foreground: #d0d0d0;
-  --editor-stage: #0d0d0d;
-  --editor-shell: #181818;
-  --editor-canvas: #151515;
-  --editor-rail: #121212;
-  --editor-header-border: #121212;
-  --editor-canvas-border: #222222;
-  --editor-rail-border: #232323;
-  --editor-nav-active: #181818;
-  --editor-nav-idle: #131313;
+  --surface-stage: #0d0d0d;
+  --surface-shell: #181818;
+  --surface-canvas: #151515;
+  --surface-rail: #121212;
+  --surface-idle: #131313;
+  --surface-raised: #1b1b1b;
+  --surface-control: #212121;
+  --surface-active: #222222;
+  --border-header: #121212;
+  --border-groove: #0a0a0a;
+  --border-subtle: #222222;
+  --border-rail: #232323;
+  --border: #272727;
+  --border-strong: #333333;
+  --border-underline: #3b3b3b;
+  --text-rail: #d0d0d0;
+  --text-primary: #c7c7c7;
+  --text-secondary: #adadad;
+  --text-tertiary: #9a9a9a;
+  --text-muted: #9a9a9ab2;
+  --text-placeholder: #4d4d4d;
+  --accent: #bed2ee;
+  --accent-border: #bed2eebf;
+  --connector: #6c6c6c;
+  --font-sans: "Satoshi", ui-sans-serif, system-ui, sans-serif;
 }
 
 html,
 body {
   height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--surface-shell);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+}
+
+button:disabled {
+  cursor: default;
+}
+
+:focus-visible {
+  outline: 1px solid var(--accent-border);
+  outline-offset: 1px;
 }
 
 .editor-stage {
@@ -26,25 +56,314 @@ body {
   place-items: center;
   overflow: auto;
   padding: 24px;
-  background: var(--editor-stage);
+  background: var(--surface-stage);
 }
 
 .editor-window {
+  display: flex;
+  flex-direction: column;
   width: min(1440px, calc(100vw - 48px));
   height: min(900px, calc(100dvh - 48px));
   overflow: hidden;
-  border: 1px solid var(--editor-canvas-border);
+  border: 1px solid var(--border-subtle);
   border-radius: 12px;
-  background: var(--editor-shell);
+  background: var(--surface-shell);
 }
 
-body {
+/* Uppercase labels used for section headings and component types. */
+.eyebrow {
+  font-size: 8.5px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* The two short strokes beneath each text block, from the Figma canvas. */
+.writing-underline::after {
+  content: "";
+  display: block;
+  width: 36px;
+  height: 4px;
+  margin-top: 6px;
+  background:
+    linear-gradient(var(--border-subtle), var(--border-subtle)) 0 0 / 36px 1px
+    no-repeat,
+    linear-gradient(var(--border-subtle), var(--border-subtle)) 0 3px / 12px 1px
+    no-repeat;
+}
+
+/* Grows a textarea with its content by mirroring the value in a hidden cell. */
+.text-field {
+  display: grid;
+}
+
+.text-field::after {
+  content: attr(data-value) " ";
+  visibility: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.text-field > textarea,
+.text-field::after {
+  grid-area: 1 / 1;
+  min-width: 0;
   margin: 0;
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  padding: 0;
+  border: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
 }
 
-button:disabled {
-  cursor: default;
+.text-field > textarea {
+  resize: none;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  background: transparent;
+  color: inherit;
+  outline: none;
+}
+
+.text-field > textarea::placeholder {
+  color: var(--text-placeholder);
+}
+
+/* Concepts panel: the file square, and the tree line and dot of a branch. */
+.concept-icon {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+}
+
+.branch-line {
+  position: absolute;
+  top: 0;
+  left: 10px;
+  width: 5px;
+  height: 12px;
+  border-bottom: 1px solid var(--connector);
+  border-left: 1px solid var(--connector);
+  border-bottom-left-radius: 1px;
+}
+
+.branch-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.menu-surface {
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  box-shadow: 0 6px 16px rgb(0 0 0 / 0.35);
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.menu-item:hover,
+.menu-item:focus-visible {
+  color: var(--text-primary);
+  background: var(--surface-control);
+}
+
+.menu-divider {
+  align-self: center;
+  width: 1px;
+  height: 12px;
+  background: var(--border);
+}
+
+.concept-canvas .react-flow {
+  --xy-background-color: var(--surface-canvas);
+  --xy-edge-stroke: var(--connector);
+  --xy-edge-stroke-selected: var(--accent);
+  --xy-edge-stroke-width: 1;
+  --xy-connectionline-stroke: var(--accent-border);
+  --xy-connectionline-stroke-width: 1;
+}
+
+.concept-canvas .react-flow__edge.selectable:hover .react-flow__edge-path {
+  stroke: var(--text-tertiary);
+}
+
+.concept-canvas .react-flow__edge.selected .react-flow__edge-path {
+  stroke: var(--accent-border);
+}
+
+.edge-end {
+  fill: var(--connector);
+}
+
+.react-flow__edge.selected .edge-end {
+  fill: var(--accent);
+}
+
+.edge-label {
+  position: absolute;
+  pointer-events: all;
+  font-size: 9px;
+  color: var(--text-tertiary);
+}
+
+.edge-label > span {
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--surface-canvas);
+}
+
+/* The width scales with the title size set from the format bar. */
+.concept-block {
+  width: max-content;
+  min-width: 96px;
+  max-width: calc(20em + 26px);
+  padding: 10px 12px 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  transition: border-color 120ms ease;
+}
+
+.concept-canvas[data-borders] .concept-block:not(.is-selected) {
+  border-color: var(--border-strong);
+}
+
+.concept-block.is-selected {
+  border-color: var(--accent-border);
+}
+
+.concept-block .block-tag {
+  margin-bottom: 5px;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+}
+
+.concept-canvas:not([data-labels]) .block-tag {
+  display: none;
+}
+
+.concept-block .block-title {
+  line-height: 1.3;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.concept-block .block-title.is-empty {
+  color: var(--text-placeholder);
+}
+
+.concept-block .block-description {
+  margin-top: 5px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.concept-block .block-handle {
+  width: 7px;
+  height: 7px;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--text-tertiary);
+  border-radius: 50%;
+  background: var(--surface-canvas);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.concept-block:hover .block-handle,
+.concept-block.is-selected .block-handle {
+  opacity: 1;
+}
+
+.concept-block .block-handle:hover {
+  border-color: var(--accent);
+}
+
+/* The text bar under a selected block, from the Figma template canvas. */
+.format-bar {
+  display: flex;
+  align-items: center;
+  min-width: 200px;
+  height: 27px;
+  padding-top: 1px;
+  border-top: 1px solid var(--border-groove);
+  background: var(--surface-canvas);
+}
+
+.format-bar > :last-child {
+  margin-left: auto;
+}
+
+.format-button {
+  display: flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  transition: color 120ms ease;
+}
+
+.format-button:hover,
+.format-button[aria-pressed="true"],
+.format-button[aria-expanded="true"] {
+  color: var(--text-primary);
+}
+
+.format-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border-groove);
+}
+
+/* Centred above the empty-state prompt, then docked in the corner once the
+   canvas has content. */
+.canvas-orb {
+  position: absolute;
+  top: calc(50% - 60px);
+  left: 50%;
+  z-index: 10;
+  translate: -50% -50%;
+  opacity: 0.6;
+  pointer-events: none;
+  transition:
+    top 600ms cubic-bezier(0.22, 1, 0.36, 1),
+    left 600ms cubic-bezier(0.22, 1, 0.36, 1),
+    scale 600ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 600ms ease;
+}
+
+.canvas-orb.is-docked {
+  top: calc(100% - 34px);
+  left: 38px;
+  scale: 0.66;
+  opacity: 0.45;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .concept-block,
+  .concept-block *,
+  .canvas-orb {
+    transition: none;
+  }
 }
