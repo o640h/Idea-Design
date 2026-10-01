@@ -134,22 +134,23 @@ current session state.
 
 ### 2.4 Clarify the Canvas
 
-- [ ] Render relationship kinds with distinct line styles, such as solid for
+- [x] Render relationship kinds with distinct line styles, such as solid for
   containment, dashed for dependency and dotted for alternative, not colour.
-- [ ] Show the current branch as the last breadcrumb segment and make it the
+  Containment lines arrive with nesting in 5.1.
+- [x] Show the current branch as the last breadcrumb segment and make it the
   branch switcher.
-- [ ] Give rail icons tooltips naming the view and its keyboard shortcut.
-- [ ] Set a legibility floor in the shared tokens: text people need to read is
+- [x] Give rail icons tooltips naming the view and its keyboard shortcut.
+- [x] Set a legibility floor in the shared tokens: text people need to read is
   at least 11px and aims for 4.5:1 contrast. Keep lower contrast for hints,
   decoration and disabled states.
 
 ### 2.5 Verify the First Complete Journey
 
-- [ ] Create a concept, edit its structure, reload and continue editing.
-- [ ] Test interrupted saves, two open tabs and outbox recovery without
+- [x] Create a concept, edit its structure, reload and continue editing.
+- [x] Test interrupted saves, two open tabs and outbox recovery without
   data loss.
-- [ ] Verify one account cannot read or modify another account's concepts.
-- [ ] Confirm importing an export preserves component IDs and relationships.
+- [x] Verify one account cannot read or modify another account's concepts.
+- [x] Confirm importing an export preserves component IDs and relationships.
 
 ## Phase 3 — Branch and Compare
 

@@ -23,6 +23,7 @@ import {
   createComponent,
   createComponentLayout,
   DEFAULT_TEXT_FORMATS,
+  RELATIONSHIP_KINDS,
 } from "@/lib/concepts/model";
 import {
   BlockNode,
@@ -451,10 +452,27 @@ function CanvasContent({
                   type: "selection/set",
                   selection: { kind: "relationship", id: edge.id },
                 });
+                const label = (value: string | null) => () =>
+                  dispatch({
+                    type: "relationship/update",
+                    id: edge.id,
+                    field: "type",
+                    value,
+                  });
+
                 setContextMenu({
                   x: event.clientX,
                   y: event.clientY,
                   items: [
+                    ...Object.keys(RELATIONSHIP_KINDS).map((kind) => ({
+                      label: kind.replace(/\b\w/g, (letter) =>
+                        letter.toUpperCase(),
+                      ),
+                      onSelect: label(kind),
+                    })),
+                    ...(edge.data?.relationship.type
+                      ? [{ label: "Remove Label", onSelect: label(null) }]
+                      : []),
                     {
                       label: "Delete",
                       onSelect: () =>
@@ -583,7 +601,7 @@ function ConceptHeader({
           )
         }
       />
-      <p className="mt-1 text-[10.5px] text-[var(--text-tertiary)]">
+      <p className="mt-1 text-small text-[var(--text-tertiary)]">
         {pluralise(concept.components.length, "Component")}
         <span aria-hidden="true">{"  ·  "}</span>
         {pluralise(concept.relationships.length, "Connection")}
@@ -633,7 +651,7 @@ function DisplayMenu({
         trigger={
           <ChartNoAxesGantt aria-hidden="true" size={16} strokeWidth={1} />
         }
-        triggerClassName="grid size-6 place-items-center rounded-sm text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-primary)]"
+        triggerClassName="display-trigger grid size-6 place-items-center rounded-sm text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-primary)]"
       >
         {() =>
           options.map(({ key, label }) => (

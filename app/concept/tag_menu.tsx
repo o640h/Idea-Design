@@ -70,7 +70,7 @@ export default function TagMenu({
                 close();
               }
             }}
-            className="mt-0.5 h-6 w-28 border-t border-[var(--border)] bg-transparent px-2 text-[10px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-placeholder)]"
+            className="mt-0.5 h-6 w-28 border-t border-[var(--border)] bg-transparent px-2 text-ui text-[var(--text-primary)] outline-none placeholder:text-[var(--text-placeholder)]"
           />
         </>
       )}

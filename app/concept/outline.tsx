@@ -175,7 +175,7 @@ function OutlineItem({
       <TextField
         aria-label="Description"
         placeholder="Add detail"
-        className="text-[10.5px] leading-[14px] text-[var(--text-secondary)]"
+        className="text-small leading-[14px] text-[var(--text-secondary)]"
         commitWhileTyping
         value={component.description}
         onCommit={(value, continuing) =>
@@ -196,7 +196,7 @@ function OutlineItem({
           {outgoing.map((relationship) => (
             <li
               key={relationship.id}
-              className="flex items-center gap-2 text-[10px] text-[var(--text-tertiary)]"
+              className="flex items-center gap-2 text-small text-[var(--text-tertiary)]"
             >
               <ArrowRight aria-hidden="true" size={10} />
               <span className="text-[var(--text-secondary)]">

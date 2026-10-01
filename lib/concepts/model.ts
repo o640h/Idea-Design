@@ -9,6 +9,15 @@ export const SUGGESTED_TAGS = [
   "evidence",
 ] as const;
 
+/**
+ * Connection labels drawn with a line style of their own, so kinds read by
+ * shape rather than colour. Other labels, and none, draw a solid line.
+ */
+export const RELATIONSHIP_KINDS = {
+  "depends on": "dependency",
+  "alternative to": "alternative",
+} as const;
+
 export type WorkspaceId = string;
 export type ConceptId = string;
 export type ComponentId = string;
@@ -71,7 +80,7 @@ export interface ComponentLayout {
 
 export const DEFAULT_TEXT_FORMATS: ComponentLayout["formats"] = {
   title: { fontSize: 13, fontWeight: 300, opacity: 1, italic: false },
-  description: { fontSize: 10, fontWeight: 300, opacity: 0.85, italic: false },
+  description: { fontSize: 11, fontWeight: 300, opacity: 0.85, italic: false },
 };
 
 /** A concept's content and component layouts: what its operations change. */
@@ -95,6 +104,13 @@ export function createComponentLayout(
   position: Pick<ComponentLayout, "x" | "y">,
 ): ComponentLayout {
   return { componentId, ...position, formats: DEFAULT_TEXT_FORMATS };
+}
+
+export function relationshipKind(type: string | null) {
+  const label = type?.trim().toLowerCase() ?? "";
+  return label in RELATIONSHIP_KINDS
+    ? RELATIONSHIP_KINDS[label as keyof typeof RELATIONSHIP_KINDS]
+    : null;
 }
 
 export function normaliseTag(tag: string) {

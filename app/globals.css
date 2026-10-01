@@ -1,5 +1,17 @@
 @import "tailwindcss";
 
+/*
+ * Interface text (rail, panel, breadcrumb, toolbar, menus) uses --text-ui.
+ * --text-small is the legibility floor: text people need to read is never
+ * smaller and aims for 4.5:1 contrast, so it uses --text-tertiary or
+ * brighter. Hints, decoration and disabled states may sit below that, such
+ * as --text-placeholder.
+ */
+@theme {
+  --text-ui: 12px;
+  --text-small: 11px;
+}
+
 :root {
   color-scheme: dark;
   --surface-stage: #0d0d0d;
@@ -21,12 +33,13 @@
   --text-primary: #c7c7c7;
   --text-secondary: #adadad;
   --text-tertiary: #9a9a9a;
-  --text-muted: #9a9a9ab2;
   --text-placeholder: #4d4d4d;
   --accent: #bed2ee;
   --accent-border: #bed2eebf;
   --connector: #6c6c6c;
   --font-sans: "Satoshi", ui-sans-serif, system-ui, sans-serif;
+  /* The Concepts panel; the breadcrumb lines up with the canvas beside it. */
+  --panel-width: 184px;
 }
 
 html,
@@ -74,11 +87,11 @@ select:not(:disabled) {
 
 /* Uppercase labels used for section headings and component types. */
 .eyebrow {
-  font-size: 8.5px;
+  font-size: var(--text-small);
   font-weight: 500;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--text-tertiary);
 }
 
 /* The two short strokes beneath each text block, from the Figma canvas. */
@@ -132,11 +145,12 @@ select:not(:disabled) {
   color: var(--text-placeholder);
 }
 
-/* Concepts panel: the file square, and the tree line and dot of a branch. */
+/* Concepts panel: the file square, and the tree line and dot of a branch.
+   The line starts under the square's centre and stops just before the dot. */
 .concept-icon {
   flex-shrink: 0;
-  width: 7px;
-  height: 7px;
+  width: 9px;
+  height: 9px;
   border: 1px solid currentColor;
   border-radius: 2px;
 }
@@ -144,17 +158,17 @@ select:not(:disabled) {
 .branch-line {
   position: absolute;
   top: 0;
-  left: 10px;
-  width: 5px;
-  height: 12px;
+  left: 12px;
+  width: 7px;
+  height: 13px;
   border-bottom: 1px solid var(--connector);
   border-left: 1px solid var(--connector);
   border-bottom-left-radius: 1px;
 }
 
 .branch-dot {
-  width: 4px;
-  height: 4px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: var(--accent);
 }
@@ -178,10 +192,10 @@ select:not(:disabled) {
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 24px;
-  padding: 0 8px;
+  height: 28px;
+  padding: 0 10px;
   border-radius: 2px;
-  font-size: 10px;
+  font-size: var(--text-ui);
   font-weight: 500;
   color: var(--text-tertiary);
   white-space: nowrap;
@@ -199,7 +213,7 @@ select:not(:disabled) {
 .menu-divider {
   align-self: center;
   width: 1px;
-  height: 12px;
+  height: 14px;
   background: var(--border);
 }
 
@@ -228,10 +242,21 @@ select:not(:disabled) {
   fill: var(--accent);
 }
 
+/* Connection kinds differ by line style, never by colour. */
+.react-flow__edge-path.edge-kind-dependency {
+  stroke-dasharray: 5 4;
+}
+
+.react-flow__edge-path.edge-kind-alternative {
+  stroke-dasharray: 0.5 3.5;
+  stroke-linecap: round;
+  stroke-width: 1.5;
+}
+
 .edge-label {
   position: absolute;
   pointer-events: all;
-  font-size: 9px;
+  font-size: var(--text-small);
   color: var(--text-tertiary);
 }
 
@@ -368,7 +393,7 @@ select:not(:disabled) {
   height: 20px;
   padding: 0 7px;
   border-radius: 4px;
-  font-size: 10px;
+  font-size: var(--text-small);
   font-weight: 500;
   color: var(--text-tertiary);
   transition: color 120ms ease;
@@ -408,6 +433,72 @@ select:not(:disabled) {
   left: 38px;
   scale: 0.66;
   opacity: 0.45;
+}
+
+/* The Display icon's bars slide to their mirrored places while its menu is
+   open; the top bar is already centred, so the lower two swap sides. */
+.display-trigger svg path {
+  transition: translate 450ms cubic-bezier(0.34, 1.3, 0.64, 1);
+}
+
+.display-trigger svg path:nth-child(3) {
+  transition-delay: 40ms;
+}
+
+.display-trigger[aria-expanded="true"] svg path:nth-child(2) {
+  translate: 6px 0;
+}
+
+.display-trigger[aria-expanded="true"] svg path:nth-child(3) {
+  translate: -8px 0;
+}
+
+/* Rail tooltips name the view and its shortcut after a short hover. */
+.rail-item {
+  position: relative;
+  display: flex;
+}
+
+/* Disabled buttons pass the pointer through so their tooltip still shows. */
+.rail-item button:disabled {
+  pointer-events: none;
+}
+
+.rail-tooltip {
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 10px);
+  z-index: 50;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-raised);
+  box-shadow: 0 6px 16px rgb(0 0 0 / 0.35);
+  font-size: var(--text-ui);
+  color: var(--text-primary);
+  white-space: nowrap;
+  opacity: 0;
+  translate: -3px -50%;
+  pointer-events: none;
+  transition:
+    opacity 120ms ease,
+    translate 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.rail-item:hover .rail-tooltip,
+.rail-item:has(:focus-visible) .rail-tooltip {
+  opacity: 1;
+  translate: 0 -50%;
+  transition-delay: 350ms;
+}
+
+.rail-tooltip kbd,
+.rail-tooltip-note {
+  font: inherit;
+  color: var(--text-tertiary);
 }
 
 /* The Settings gear turns as its menu opens and back as it closes. */
@@ -527,7 +618,9 @@ select:not(:disabled) {
   .canvas-orb,
   .collapsible,
   .save-indicator,
-  .settings-trigger svg {
+  .settings-trigger svg,
+  .display-trigger svg path,
+  .rail-tooltip {
     transition: none;
   }
 

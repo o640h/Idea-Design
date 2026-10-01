@@ -2,7 +2,10 @@
 
 import {
   Bookmark,
+  Check,
+  ChevronDown,
   createLucideIcon,
+  Plus,
   RotateCcwClock,
   Search,
   Settings,
@@ -16,6 +19,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import {
   type ConceptSummary,
@@ -72,18 +76,67 @@ const Compare = createLucideIcon("compare", [
   ],
 ]);
 
+/** Views still to come; their shortcuts are reserved in rail order. */
 const navigationItems = [
-  { label: "Search", Icon: Search },
-  { label: "Lineage", Icon: Lineage },
-  { label: "Compare", Icon: Compare },
-  { label: "Bookmarks", Icon: Bookmark },
-  { label: "History", Icon: RotateCcwClock },
+  { label: "Search", Icon: Search, key: "2" },
+  { label: "Lineage", Icon: Lineage, key: "3" },
+  { label: "Compare", Icon: Compare, key: "4" },
+  { label: "Bookmarks", Icon: Bookmark, key: "5" },
+  { label: "History", Icon: RotateCcwClock, key: "6" },
 ];
+
+function isMacPlatform() {
+  return /Mac|iPhone|iPad/.test(navigator.platform);
+}
+
+/** False on the server, so the first render matches before the real value. */
+function useIsMac() {
+  return useSyncExternalStore(
+    () => () => {},
+    isMacPlatform,
+    () => false,
+  );
+}
+
+function isTyping(target: EventTarget | null) {
+  return (
+    target instanceof HTMLElement &&
+    Boolean(target.closest("input, textarea, select, [contenteditable]"))
+  );
+}
+
+/** Names a rail view and its shortcut beside the rail. */
+function RailItem({
+  id,
+  label,
+  shortcut,
+  available = true,
+  className = "",
+  children,
+}: {
+  id: string;
+  label: string;
+  shortcut: string;
+  available?: boolean;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <span className={`rail-item ${className}`}>
+      {children}
+      <span role="tooltip" id={id} className="rail-tooltip">
+        <span>{label}</span>
+        <kbd>{shortcut}</kbd>
+        {!available && <span className="rail-tooltip-note">Coming Soon</span>}
+      </span>
+    </span>
+  );
+}
 
 const railIconProps = {
   "aria-hidden": true,
-  size: 12,
-  strokeWidth: 1.6,
+  size: 15,
+  strokeWidth: 1.5,
   className: "text-[var(--text-rail)]",
 } as const;
 
@@ -155,6 +208,12 @@ export default function ConceptEditor({
     () => summaries.find(({ id }) => id === opened.id)?.mainBranchId ?? "",
   );
   const [panelOpen, setPanelOpen] = useState(true);
+  const settingsRef = useRef<HTMLSpanElement>(null);
+  const isMac = useIsMac();
+  const shortcuts = {
+    concepts: isMac ? "⌥1" : "Alt+1",
+    view: (key: string) => (isMac ? `⌥${key}` : `Alt+${key}`),
+  };
   const [display, setDisplay] = useState<CanvasDisplay>({
     borders: false,
     labels: true,
@@ -288,6 +347,32 @@ export default function ConceptEditor({
     }
   }
 
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (isTyping(event.target)) {
+        return;
+      }
+
+      const command = isMacPlatform() ? event.metaKey : event.ctrlKey;
+
+      if (
+        event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        event.code === "Digit1"
+      ) {
+        event.preventDefault();
+        setPanelOpen((open) => !open);
+      } else if (command && !event.altKey && event.key === ",") {
+        event.preventDefault();
+        settingsRef.current?.querySelector("button")?.click();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   function createBranch() {
     const main = activeConcept.branches?.[0].editor;
 
@@ -379,18 +464,21 @@ export default function ConceptEditor({
         className="editor-window"
         inert={sync.leftOver > 0 || importFailure !== null}
       >
-        <header className="flex h-9 shrink-0 items-center border-b border-[var(--border-header)] bg-[var(--surface-shell)] px-[9px]">
-          <Image
-            src="/icons/idea_design_logo.svg"
-            alt="Idea Design"
-            width={26.0088}
-            height={4.33431}
-            loading="eager"
-          />
+        <header className="flex h-10 shrink-0 items-center border-b border-[var(--border-header)] bg-[var(--surface-shell)]">
+          {/* As wide as the rail, so the logo sits centred above it. */}
+          <div className="flex w-[46px] shrink-0 justify-center pl-1.5">
+            <Image
+              src="/icons/idea_design_logo.svg"
+              alt="Idea Design"
+              width={32.0108}
+              height={5.33454}
+              loading="eager"
+            />
+          </div>
           <nav
             aria-label="Breadcrumb"
-            className={`truncate pl-[21px] text-[11px] text-[var(--text-tertiary)] transition-[padding] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-              panelOpen ? "md:pl-[137px]" : ""
+            className={`truncate pl-[18px] text-ui text-[var(--text-tertiary)] transition-[padding] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+              panelOpen ? "md:pl-[calc(var(--panel-width)+12px)]" : ""
             }`}
           >
             {workspace.title}
@@ -401,105 +489,176 @@ export default function ConceptEditor({
             <span aria-hidden="true" className="px-2">
               /
             </span>
-            <span aria-current="page">{activeBranch?.title ?? "Main"}</span>
+            <Menu
+              label={`Branch, ${activeBranch?.title ?? "Main"}`}
+              trigger={
+                <>
+                  {activeBranch?.title ?? "Main"}
+                  <ChevronDown aria-hidden="true" size={10} />
+                </>
+              }
+              triggerClassName="inline-flex items-center gap-1 text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
+            >
+              {(close) => (
+                <>
+                  {(
+                    activeConcept.branches ?? [
+                      { id: activeConcept.mainBranchId, title: "Main" },
+                    ]
+                  ).map((branch) => (
+                    <button
+                      key={branch.id}
+                      type="button"
+                      aria-pressed={branch.id === activeBranch?.id}
+                      className="menu-item min-w-36 justify-between"
+                      onClick={() => {
+                        selectBranch(activeConcept.id, branch.id);
+                        close();
+                      }}
+                    >
+                      {branch.title}
+                      {branch.id === activeBranch?.id && (
+                        <Check aria-hidden="true" size={10} />
+                      )}
+                    </button>
+                  ))}
+                  <div className="my-0.5 border-t border-[var(--border)]" />
+                  <button
+                    type="button"
+                    className="menu-item"
+                    onClick={() => {
+                      createBranch();
+                      close();
+                    }}
+                  >
+                    <Plus aria-hidden="true" size={10} />
+                    New Branch From Main
+                  </button>
+                </>
+              )}
+            </Menu>
             <SaveIndicator status={sync.status} onRetry={sync.retry} />
           </nav>
         </header>
 
         <div className="flex min-h-0 flex-1">
           <aside
-            className={`flex w-[38px] shrink-0 overflow-hidden bg-[var(--surface-shell)] transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-              panelOpen ? "md:w-40" : ""
-            }`}
+            className="flex shrink-0 bg-[var(--surface-shell)]"
             aria-label="Editor Navigation"
           >
-            <nav className="my-1.5 ml-1.5 flex w-8 shrink-0 flex-col rounded-md bg-[var(--surface-rail)] p-1 shadow-[inset_0_0_0_1px_var(--border-rail)]">
+            <nav className="my-1.5 ml-1.5 flex w-10 shrink-0 flex-col rounded-lg bg-[var(--surface-rail)] p-1 shadow-[inset_0_0_0_1px_var(--border-rail)]">
               <div className="flex flex-col gap-1">
-                <button
-                  type="button"
-                  aria-label="Concepts"
-                  aria-expanded={panelOpen}
-                  aria-controls="concepts-panel"
-                  onClick={() => setPanelOpen((open) => !open)}
-                  className="flex h-6 w-full shrink-0 items-center justify-center rounded-sm bg-[var(--surface-shell)]"
+                <RailItem
+                  id="rail-concepts"
+                  label="Concepts"
+                  shortcut={shortcuts.concepts}
                 >
-                  <Squircle {...railIconProps} />
-                </button>
-                {navigationItems.map(({ label, Icon }) => (
                   <button
-                    key={label}
                     type="button"
-                    aria-label={label}
-                    disabled
-                    className="flex h-6 w-full shrink-0 items-center justify-center rounded-sm bg-[var(--surface-idle)]"
+                    aria-label="Concepts"
+                    aria-describedby="rail-concepts"
+                    aria-keyshortcuts="Alt+1"
+                    aria-expanded={panelOpen}
+                    aria-controls="concepts-panel"
+                    onClick={() => setPanelOpen((open) => !open)}
+                    className="flex h-8 w-full shrink-0 items-center justify-center rounded-md bg-[var(--surface-shell)]"
                   >
-                    <Icon {...railIconProps} />
+                    <Squircle {...railIconProps} />
                   </button>
+                </RailItem>
+                {navigationItems.map(({ label, Icon, key }) => (
+                  <RailItem
+                    key={label}
+                    id={`rail-${key}`}
+                    label={label}
+                    shortcut={shortcuts.view(key)}
+                    available={false}
+                  >
+                    <button
+                      type="button"
+                      aria-label={label}
+                      aria-describedby={`rail-${key}`}
+                      disabled
+                      className="flex h-8 w-full shrink-0 items-center justify-center rounded-md bg-[var(--surface-idle)]"
+                    >
+                      <Icon {...railIconProps} />
+                    </button>
+                  </RailItem>
                 ))}
               </div>
 
-              <Menu
-                label="Settings"
-                above
-                trigger={<Settings {...railIconProps} />}
-                triggerClassName="settings-trigger mt-auto flex h-6 w-full shrink-0 items-center justify-center rounded-sm bg-[var(--surface-canvas)]"
-              >
-                {() => (
-                  <>
-                    <p className="px-2 py-1.5 text-[10px] text-[var(--text-tertiary)]">
-                      {email}
-                    </p>
-                    <button
-                      type="button"
-                      className="menu-item"
-                      onClick={async () => {
-                        await createClient().auth.signOut();
-                        router.replace("/sign-in");
-                      }}
-                    >
-                      Sign Out
-                    </button>
-                  </>
-                )}
-              </Menu>
+              <span ref={settingsRef} className="mt-auto flex">
+                <Menu
+                  label="Settings"
+                  above
+                  trigger={<Settings {...railIconProps} />}
+                  triggerClassName="settings-trigger flex h-8 w-full shrink-0 items-center justify-center rounded-md bg-[var(--surface-canvas)]"
+                >
+                  {() => (
+                    <>
+                      <p className="px-2 py-1.5 text-ui text-[var(--text-tertiary)]">
+                        {email}
+                      </p>
+                      <button
+                        type="button"
+                        className="menu-item"
+                        onClick={async () => {
+                          await createClient().auth.signOut();
+                          router.replace("/sign-in");
+                        }}
+                      >
+                        Sign Out
+                      </button>
+                    </>
+                  )}
+                </Menu>
+              </span>
             </nav>
 
             {/* Kept mounted so the panel can slide closed. */}
             <div
-              inert={!panelOpen}
-              className={`flex w-[122px] shrink-0 transition-opacity duration-200 ${
-                panelOpen ? "opacity-100" : "opacity-0"
+              className={`w-0 overflow-hidden transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                panelOpen ? "md:w-[var(--panel-width)]" : ""
               }`}
             >
-              <ConceptPanel
-                workspaceTitle={workspace.title}
-                concepts={liveConcepts.map((concept) => ({
-                  id: concept.id,
-                  title: conceptTitle(concept),
-                  branches: concept.branches ?? [
-                    { id: concept.mainBranchId, title: "Main" },
-                  ],
-                }))}
-                trash={concepts
-                  .filter(({ deletedAt }) => deletedAt)
-                  .map((concept) => ({
+              <div
+                inert={!panelOpen}
+                className={`flex h-full w-[var(--panel-width)] transition-opacity duration-200 ${
+                  panelOpen ? "opacity-100" : "opacity-0"
+                }`}
+              >
+                <ConceptPanel
+                  workspaceTitle={workspace.title}
+                  concepts={liveConcepts.map((concept) => ({
                     id: concept.id,
                     title: conceptTitle(concept),
+                    branches: concept.branches ?? [
+                      { id: concept.mainBranchId, title: "Main" },
+                    ],
                   }))}
-                activeConceptId={activeConcept.id}
-                activeBranchId={activeBranch?.id ?? activeConcept.mainBranchId}
-                onSelect={selectBranch}
-                onCreate={() => createConcept()}
-                onImport={importConcept}
-                onExport={downloadConcept}
-                onCreateBranch={createBranch}
-                onRename={renameConcept}
-                onRenameBranch={renameBranch}
-                onDelete={trashConcept}
-                onRestore={(id) => setTrashed(id, null)}
-                onDeleteForever={deleteForever}
-                onClose={() => setPanelOpen(false)}
-              />
+                  trash={concepts
+                    .filter(({ deletedAt }) => deletedAt)
+                    .map((concept) => ({
+                      id: concept.id,
+                      title: conceptTitle(concept),
+                    }))}
+                  activeConceptId={activeConcept.id}
+                  activeBranchId={
+                    activeBranch?.id ?? activeConcept.mainBranchId
+                  }
+                  onSelect={selectBranch}
+                  onCreate={() => createConcept()}
+                  onImport={importConcept}
+                  onExport={downloadConcept}
+                  onCreateBranch={createBranch}
+                  onRename={renameConcept}
+                  onRenameBranch={renameBranch}
+                  onDelete={trashConcept}
+                  onRestore={(id) => setTrashed(id, null)}
+                  onDeleteForever={deleteForever}
+                  onClose={() => setPanelOpen(false)}
+                />
+              </div>
             </div>
           </aside>
 

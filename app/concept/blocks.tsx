@@ -24,19 +24,20 @@ import {
   useState,
 } from "react";
 import type { EditorDispatch } from "@/lib/concepts/editor";
-import type {
-  ComponentId,
-  ComponentLayout,
-  ComponentTextField,
-  ConceptComponent,
-  ConceptRelationship,
-  TextFormat,
+import {
+  type ComponentId,
+  type ComponentLayout,
+  type ComponentTextField,
+  type ConceptComponent,
+  type ConceptRelationship,
+  relationshipKind,
+  type TextFormat,
 } from "@/lib/concepts/model";
 import Menu from "./menu";
 import TagMenu from "./tag_menu";
 import { TextField } from "./text_field";
 
-const FONT_SIZES = [10, 13, 16, 20, 24, 32];
+const FONT_SIZES = [11, 13, 16, 20, 24, 32];
 const FONT_WEIGHTS = [
   { label: "Regular", value: 300 },
   { label: "Medium", value: 400 },
@@ -447,7 +448,12 @@ export function RelationshipEdge({
 
   return (
     <>
-      <BaseEdge id={id} path={path} interactionWidth={16} />
+      <BaseEdge
+        id={id}
+        path={path}
+        interactionWidth={16}
+        className={`edge-kind-${relationshipKind(label ?? null) ?? "default"}`}
+      />
       <circle className="edge-end" cx={targetX} cy={targetY} r={2} />
 
       {(label || selected) && (

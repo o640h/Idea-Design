@@ -44,11 +44,14 @@ interface ConceptPanelProps {
 function HeaderButton({
   label,
   Icon,
+  iconSize = 14,
   onClick,
   expanded,
 }: {
   label: string;
   Icon: LucideIcon;
+  /** Chevrons draw less ink than file icons, so they are sized up to match. */
+  iconSize?: number;
   onClick?: () => void;
   expanded?: boolean;
 }) {
@@ -60,9 +63,9 @@ function HeaderButton({
       aria-expanded={expanded}
       disabled={!onClick}
       onClick={onClick}
-      className="grid size-5 place-items-center rounded-sm text-[var(--text-rail)] opacity-80 transition-[opacity,background-color] duration-150 hover:bg-[var(--surface-raised)] hover:opacity-100 disabled:opacity-40 disabled:hover:bg-transparent"
+      className="grid h-8 w-10 place-items-center rounded-md text-[var(--text-rail)] transition-colors duration-150 hover:bg-[var(--surface-raised)] disabled:opacity-40 disabled:hover:bg-transparent"
     >
-      <Icon aria-hidden="true" size={12} strokeWidth={1.6} />
+      <Icon aria-hidden="true" size={iconSize} strokeWidth={1.5} />
     </button>
   );
 }
@@ -86,7 +89,7 @@ function RenameField({
 
   return (
     <div
-      className={`flex items-center rounded-sm bg-[var(--surface-active)] ${kind === "Branch" ? "h-5 gap-[3px] pl-[18px] pr-1" : "h-[22px] gap-1.5 px-[7px]"}`}
+      className={`flex items-center rounded-sm bg-[var(--surface-active)] ${kind === "Branch" ? "h-6 gap-[3px] pl-[22px] pr-1" : "h-7 gap-2 px-2"}`}
     >
       <span
         aria-hidden="true"
@@ -97,7 +100,7 @@ function RenameField({
         singleLine
         aria-label={`${kind} Name`}
         placeholder={`Untitled ${kind}`}
-        className="min-w-0 flex-1 text-[10.5px] leading-none text-[var(--text-primary)]"
+        className="min-w-0 flex-1 text-ui leading-none text-[var(--text-primary)]"
         value={title}
         onCommit={(value) => onRename(value.trim() || `Untitled ${kind}`)}
         onBlur={onDone}
@@ -154,7 +157,7 @@ export default function ConceptPanel({
       items: [
         { label: "Rename", onSelect: () => setRenamingId(id) },
         { label: "Export", onSelect: () => onExport(id) },
-        { label: "Move to Trash", onSelect: () => onDelete(id) },
+        { label: "Delete", onSelect: () => onDelete(id) },
       ],
     });
   }
@@ -194,7 +197,10 @@ export default function ConceptPanel({
         });
       }}
     >
-      <div className="flex h-[45px] shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] pl-2.5">
+      {/* Lines up with the rail: the icons match its first button (10px
+          down, 32px tall) and the divider falls in the gap below it. Equal
+          side padding keeps the evenly spaced icons centred. */}
+      <div className="flex h-11 shrink-0 items-start justify-between border-b border-[var(--border-subtle)] px-[9px] pt-2.5">
         <HeaderButton
           label="New Branch From Main"
           Icon={FilePlusCorner}
@@ -211,6 +217,7 @@ export default function ConceptPanel({
         <HeaderButton
           label={allCollapsed ? "Expand Concepts" : "Compact Concepts"}
           Icon={allCollapsed ? ChevronsUpDown : ChevronsDownUp}
+          iconSize={16}
           expanded={!allCollapsed}
           onClick={() =>
             setCollapsed(
@@ -221,11 +228,12 @@ export default function ConceptPanel({
         <HeaderButton
           label="Collapse Panel"
           Icon={ChevronLeft}
+          iconSize={16}
           onClick={onClose}
         />
       </div>
 
-      <h2 className="eyebrow mt-[7px] mb-[7px] pl-2.5">{workspaceTitle}</h2>
+      <h2 className="eyebrow mt-[7px] mb-[7px] pl-[13px]">{workspaceTitle}</h2>
 
       <ul className="flex flex-col px-[5px]">
         {concepts.map((concept) => {
@@ -256,7 +264,7 @@ export default function ConceptPanel({
                       setRenamingId(concept.id);
                     }
                   }}
-                  className={`flex h-[22px] w-full items-center gap-1.5 rounded-sm px-[7px] text-left text-[10.5px] leading-none transition-colors duration-150 ${
+                  className={`flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-ui leading-none transition-colors duration-150 ${
                     active
                       ? "bg-[var(--surface-active)] text-[var(--text-primary)]"
                       : "text-[var(--text-secondary)] hover:bg-[var(--surface-raised)] hover:text-[var(--text-primary)]"
@@ -318,7 +326,7 @@ export default function ConceptPanel({
                               ],
                             });
                           }}
-                          className={`flex h-5 w-full items-center gap-[3px] rounded-sm pl-[18px] pr-1 text-left text-[10px] leading-none transition-colors duration-150 hover:bg-[var(--surface-raised)] ${active && branch.id === activeBranchId ? "text-[var(--text-primary)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"}`}
+                          className={`flex h-6 w-full items-center gap-[3px] rounded-md pl-[22px] pr-1 text-left text-ui leading-none transition-colors duration-150 hover:bg-[var(--surface-raised)] ${active && branch.id === activeBranchId ? "text-[var(--text-primary)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"}`}
                         >
                           <span aria-hidden="true" className="branch-dot" />
                           <span className="truncate">{branch.title}</span>
@@ -334,19 +342,22 @@ export default function ConceptPanel({
       </ul>
 
       {trash.length > 0 && (
-        <section aria-label="Trash" className="panel-row mt-auto pb-2">
+        <section
+          aria-label="Recently Deleted"
+          className="panel-row mt-auto pb-2"
+        >
           <button
             type="button"
             aria-expanded={trashOpen}
             onClick={() => setTrashOpen((open) => !open)}
-            className="eyebrow mb-[5px] flex items-center gap-1 pl-2.5 transition-colors duration-150 hover:text-[var(--text-tertiary)]"
+            className="eyebrow mb-[5px] flex items-center gap-1 pl-[13px] transition-colors duration-150 hover:text-[var(--text-tertiary)]"
           >
             <ChevronRight
               aria-hidden="true"
-              size={9}
+              size={10}
               className={`transition-transform duration-200 ${trashOpen ? "rotate-90" : ""}`}
             />
-            Trash
+            Recently Deleted
           </button>
 
           <div
@@ -362,7 +373,7 @@ export default function ConceptPanel({
                     aria-haspopup="menu"
                     onClick={(event) => openTrashMenu(event, concept.id)}
                     onContextMenu={(event) => openTrashMenu(event, concept.id)}
-                    className="flex h-[22px] w-full items-center gap-1.5 rounded-sm px-[7px] text-left text-[10.5px] leading-none text-[var(--text-tertiary)] transition-colors duration-150 hover:bg-[var(--surface-raised)] hover:text-[var(--text-secondary)]"
+                    className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-ui leading-none text-[var(--text-tertiary)] transition-colors duration-150 hover:bg-[var(--surface-raised)] hover:text-[var(--text-secondary)]"
                   >
                     <span aria-hidden="true" className="concept-icon" />
                     <span className="truncate">
