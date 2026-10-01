@@ -155,18 +155,21 @@ select:not(:disabled) {
   border-radius: 2px;
 }
 
+/* Starts inside its row, clear of the hover box above, and turns at the
+   dot's centre. */
 .branch-line {
   position: absolute;
-  top: 0;
+  top: 4px;
   left: 12px;
-  width: 7px;
-  height: 13px;
+  width: 5px;
+  height: 9px;
   border-bottom: 1px solid var(--connector);
   border-left: 1px solid var(--connector);
   border-bottom-left-radius: 1px;
 }
 
 .branch-dot {
+  flex-shrink: 0;
   width: 5px;
   height: 5px;
   border-radius: 50%;

@@ -219,6 +219,10 @@ export default function ConceptEditor({
     labels: true,
   });
   const [importFailure, setImportFailure] = useState<string | null>(null);
+  const [branchToDelete, setBranchToDelete] = useState<{
+    conceptId: ConceptId;
+    branch: { id: string; title: string };
+  } | null>(null);
   const loading = useRef(new Set<ConceptId>());
   const sync = useSync(concepts, setConcepts);
 
@@ -423,6 +427,21 @@ export default function ConceptEditor({
     );
   }
 
+  function deleteBranch(conceptId: ConceptId, branchId: string) {
+    setConcepts((current) =>
+      updateConcept(current, conceptId, (concept) => ({
+        ...concept,
+        branches: concept.branches?.filter(({ id }) => id !== branchId) ?? null,
+      })),
+    );
+
+    const concept = concepts.find(({ id }) => id === conceptId);
+
+    if (concept && branchId === activeBranchId) {
+      selectBranch(conceptId, concept.mainBranchId);
+    }
+  }
+
   function setTrashed(id: ConceptId, deletedAt: string | null) {
     sync.enqueue({
       kind: "trash",
@@ -462,7 +481,9 @@ export default function ConceptEditor({
     <div className="editor-stage">
       <div
         className="editor-window"
-        inert={sync.leftOver > 0 || importFailure !== null}
+        inert={
+          sync.leftOver > 0 || importFailure !== null || branchToDelete !== null
+        }
       >
         <header className="flex h-10 shrink-0 items-center border-b border-[var(--border-header)] bg-[var(--surface-shell)]">
           {/* As wide as the rail, so the logo sits centred above it. */}
@@ -653,6 +674,15 @@ export default function ConceptEditor({
                   onCreateBranch={createBranch}
                   onRename={renameConcept}
                   onRenameBranch={renameBranch}
+                  onDeleteBranch={(conceptId, branchId) => {
+                    const branch = concepts
+                      .find(({ id }) => id === conceptId)
+                      ?.branches?.find(({ id }) => id === branchId);
+
+                    if (branch) {
+                      setBranchToDelete({ conceptId, branch });
+                    }
+                  }}
                   onDelete={trashConcept}
                   onRestore={(id) => setTrashed(id, null)}
                   onDeleteForever={deleteForever}
@@ -707,9 +737,45 @@ export default function ConceptEditor({
         </Notice>
       )}
 
+      {branchToDelete && (
+        <Notice
+          title="Delete Branch"
+          onDismiss={() => setBranchToDelete(null)}
+          actions={
+            <>
+              <button
+                type="button"
+                data-autofocus
+                className="menu-item"
+                onClick={() => setBranchToDelete(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="menu-item bg-[var(--surface-control)] text-[var(--text-primary)]"
+                onClick={() => {
+                  deleteBranch(
+                    branchToDelete.conceptId,
+                    branchToDelete.branch.id,
+                  );
+                  setBranchToDelete(null);
+                }}
+              >
+                Delete
+              </button>
+            </>
+          }
+        >
+          “{branchToDelete.branch.title}” and every change in it will be
+          deleted. This can’t be undone.
+        </Notice>
+      )}
+
       {importFailure && (
         <Notice
           title="Could Not Import"
+          onDismiss={() => setImportFailure(null)}
           actions={
             <button
               type="button"
@@ -784,16 +850,22 @@ function Notice({
   title,
   children,
   actions,
+  onDismiss,
 }: {
   title: string;
   children: ReactNode;
+  /** Focus starts on the action marked `data-autofocus`, or the last one. */
   actions: ReactNode;
+  /** Called on Escape; without it the message must be answered. */
+  onDismiss?: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     ref.current
-      ?.querySelector<HTMLButtonElement>("button:last-of-type")
+      ?.querySelector<HTMLButtonElement>(
+        "button[data-autofocus], button:last-of-type",
+      )
       ?.focus();
   }, []);
 
@@ -803,6 +875,12 @@ function Notice({
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="notice-title"
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && onDismiss) {
+          event.stopPropagation();
+          onDismiss();
+        }
+      }}
       className="menu-surface fixed top-1/2 left-1/2 z-50 flex w-72 -translate-1/2 flex-col gap-3 p-4"
     >
       <h2 id="notice-title" className="text-[13px] font-medium">
