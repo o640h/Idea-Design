@@ -27,11 +27,7 @@ const opening: EditableConcept = {
 
 function edit(
   steps: (EditorAction | [EditorAction, ChangeOptions])[],
-  state = createEditorState(opening.concept, {
-    conceptId: opening.concept.id,
-    components: opening.componentLayouts,
-    viewport: { x: 0, y: 0, zoom: 1 },
-  }),
+  state = createEditorState(opening),
 ): EditorState {
   return steps.reduce(
     (current, step) =>
@@ -52,6 +48,10 @@ function create(id: string, title: string): EditorAction {
 
 function titles(state: EditorState) {
   return state.present.concept.components.map(({ title }) => title);
+}
+
+function operations(state: EditorState) {
+  return state.pending.map((change) => change.operations);
 }
 
 test("replaying the log from the opening snapshot rebuilds the concept", () => {
@@ -83,7 +83,7 @@ test("replaying the log from the opening snapshot rebuilds the concept", () => {
     { type: "history/undo" },
   ]);
 
-  expect(applyOperations(opening, state.log.flat()).document).toEqual(
+  expect(applyOperations(opening, operations(state).flat()).document).toEqual(
     state.present,
   );
 });
@@ -97,10 +97,10 @@ test("undo and redo append inverse changes instead of removing entries", () => {
   const redone = edit([{ type: "history/redo" }], undone);
 
   expect(titles(undone)).toEqual(["Draft"]);
-  expect(undone.log).toHaveLength(3);
-  expect(undone.log.slice(0, 2)).toEqual(edited.log);
+  expect(undone.pending).toHaveLength(3);
+  expect(undone.pending.slice(0, 2)).toEqual(edited.pending);
   expect(titles(redone)).toEqual(["Final"]);
-  expect(redone.log).toHaveLength(4);
+  expect(redone.pending).toHaveLength(4);
 });
 
 test("undoing a delete restores the component, its connections and children", () => {
@@ -146,7 +146,7 @@ test("text typed during one focus becomes one operation and one undo step", () =
     ],
   ]);
 
-  expect(typed.log).toEqual([[create("a", "Hello")]]);
+  expect(operations(typed)).toEqual([[create("a", "Hello")]]);
   expect(
     edit([{ type: "history/undo" }], typed).present.concept.components,
   ).toEqual([]);
@@ -163,4 +163,66 @@ test("text typed during one focus becomes one operation and one undo step", () =
   );
 
   expect(titles(refocused)).toEqual(["Hello"]);
+});
+
+test("sealed changes take no more typing, so a sent change never grows", () => {
+  const sealed = edit([
+    create("a", "Hel"),
+    { type: "sync/seal" },
+    [
+      { type: "component/update", id: "a", field: "title", value: "Hello" },
+      { continuing: true },
+    ],
+  ]);
+
+  expect(operations(sealed)).toEqual([
+    [create("a", "Hel")],
+    [{ type: "component/update", id: "a", field: "title", value: "Hello" }],
+  ]);
+});
+
+test("pulled operations apply beneath pending edits in server order", () => {
+  const local = edit([
+    create("a", "Goal"),
+    { type: "sync/seal" },
+    { type: "component/update", id: "a", field: "title", value: "Mine" },
+  ]);
+  const [sent] = local.pending;
+  const pulled = edit(
+    [
+      {
+        type: "sync/pull",
+        rows: [
+          { seq: 1, changeId: sent.id, operation: sent.operations[0] },
+          {
+            seq: 2,
+            changeId: "other-tab",
+            operation: {
+              type: "component/update",
+              id: "a",
+              field: "title",
+              value: "Theirs",
+            },
+          },
+          {
+            seq: 3,
+            changeId: "other-tab-2",
+            operation: { type: "component/tag", id: "a", tag: "goal" },
+          },
+        ],
+      },
+    ],
+    local,
+  );
+
+  expect(pulled.seq).toBe(3);
+  expect(pulled.pending).toEqual(local.pending.slice(1));
+  expect(pulled.sealed).toBe(0);
+  expect(pulled.confirmed.concept.components).toEqual([
+    expect.objectContaining({ title: "Theirs", tag: "goal" }),
+  ]);
+  expect(pulled.present.concept.components).toEqual([
+    expect.objectContaining({ title: "Mine", tag: "goal" }),
+  ]);
+  expect(edit([{ type: "sync/pull", rows: [] }], pulled)).toBe(pulled);
 });

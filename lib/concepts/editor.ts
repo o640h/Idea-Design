@@ -1,6 +1,5 @@
 import type {
   ComponentId,
-  ConceptLayout,
   ConceptViewport,
   EditableConcept,
   RelationshipId,
@@ -12,6 +11,19 @@ export type EditorSelection =
   | { kind: "relationship"; id: RelationshipId }
   | null;
 
+/** Operations applied together, identified so the server can return them. */
+export interface Change {
+  id: string;
+  operations: Operation[];
+}
+
+/** An operation as the server recorded it, in its order. */
+export interface OperationRow {
+  seq: number;
+  changeId: string;
+  operation: Operation;
+}
+
 /** A change and the operations that revert it. */
 interface HistoryEntry {
   operations: Operation[];
@@ -19,9 +31,15 @@ interface HistoryEntry {
 }
 
 export interface EditorState {
+  /** The concept as of the server's operation `seq`. */
+  confirmed: EditableConcept;
+  seq: number;
+  /** Changes made here that the server has not returned yet, oldest first. */
+  pending: Change[];
+  /** How many pending changes are saved or being saved; edits no longer merge into them. */
+  sealed: number;
+  /** The confirmed concept with the pending changes applied. */
   present: EditableConcept;
-  /** Each change made this session, in order. Undo and redo append to it. */
-  log: Operation[][];
   undoStack: HistoryEntry[];
   redoStack: HistoryEntry[];
   /** Each person's own view, so it is kept out of the log. */
@@ -34,7 +52,9 @@ export type EditorAction =
   | { type: "viewport/set"; viewport: ConceptViewport }
   | { type: "selection/set"; selection: EditorSelection }
   | { type: "history/undo" }
-  | { type: "history/redo" };
+  | { type: "history/redo" }
+  | { type: "sync/seal" }
+  | { type: "sync/pull"; rows: OperationRow[] };
 
 export interface ChangeOptions {
   /** Merges a text edit into the previous change made during the same focus. */
@@ -47,24 +67,19 @@ export type EditorDispatch = (
 ) => void;
 
 export function createEditorState(
-  concept: EditableConcept["concept"],
-  layout: ConceptLayout,
+  document: EditableConcept,
+  seq = 0,
 ): EditorState {
   return {
-    present: { concept, componentLayouts: layout.components },
-    log: [],
+    confirmed: document,
+    seq,
+    pending: [],
+    sealed: 0,
+    present: document,
     undoStack: [],
     redoStack: [],
-    viewport: layout.viewport,
+    viewport: { x: 0, y: 0, zoom: 1 },
     selection: null,
-  };
-}
-
-export function getConceptLayout(state: EditorState): ConceptLayout {
-  return {
-    conceptId: state.present.concept.id,
-    components: state.present.componentLayouts,
-    viewport: state.viewport,
   };
 }
 
@@ -101,15 +116,21 @@ function change(
   }
 
   const previous = state.undoStack.at(-1);
+  const last = state.pending.at(-1);
 
-  if (continuing && previous && state.log.at(-1) === previous.operations) {
+  if (
+    continuing &&
+    previous &&
+    last?.operations === previous.operations &&
+    state.pending.length > state.sealed
+  ) {
     const operations = coalesce(previous.operations, operation);
 
     if (operations) {
       return withPresent(
         {
           ...state,
-          log: [...state.log.slice(0, -1), operations],
+          pending: [...state.pending.slice(0, -1), { id: last.id, operations }],
           // The earlier inverse already restores the text from before focus.
           undoStack: [
             ...state.undoStack.slice(0, -1),
@@ -127,7 +148,7 @@ function change(
   return withPresent(
     {
       ...state,
-      log: [...state.log, operations],
+      pending: [...state.pending, { id: crypto.randomUUID(), operations }],
       undoStack: [...state.undoStack, { operations, inverse }],
       redoStack: [],
     },
@@ -141,7 +162,13 @@ function revert(state: EditorState, entry: HistoryEntry) {
 
   return {
     state: withPresent(
-      { ...state, log: [...state.log, entry.inverse] },
+      {
+        ...state,
+        pending: [
+          ...state.pending,
+          { id: crypto.randomUUID(), operations: entry.inverse },
+        ],
+      },
       document,
     ),
     reverted: { operations: entry.inverse, inverse },
@@ -180,6 +207,41 @@ function redo(state: EditorState): EditorState {
   };
 }
 
+/**
+ * Applies operations the server has ordered beneath the pending changes, so
+ * fields resolve to the last write in server order while local edits that
+ * have not come back yet still show.
+ */
+function pull(state: EditorState, rows: OperationRow[]): EditorState {
+  const fresh = rows.filter(({ seq }) => seq > state.seq);
+  const last = fresh.at(-1);
+
+  if (!last) {
+    return state;
+  }
+
+  const confirmed = applyOperations(
+    state.confirmed,
+    fresh.map(({ operation }) => operation),
+  ).document;
+  const returned = new Set(fresh.map(({ changeId }) => changeId));
+  const pending = state.pending.filter(({ id }) => !returned.has(id));
+
+  return withPresent(
+    {
+      ...state,
+      confirmed,
+      seq: last.seq,
+      pending,
+      sealed: state.sealed - (state.pending.length - pending.length),
+    },
+    applyOperations(
+      confirmed,
+      pending.flatMap(({ operations }) => operations),
+    ).document,
+  );
+}
+
 export function editorReducer(
   state: EditorState,
   action: EditorAction,
@@ -197,6 +259,12 @@ export function editorReducer(
 
     case "history/redo":
       return redo(state);
+
+    case "sync/seal":
+      return { ...state, sealed: state.pending.length };
+
+    case "sync/pull":
+      return pull(state, action.rows);
 
     default:
       return change(state, action, options);

@@ -24,7 +24,12 @@ insert into public.operations (branch_id, seq, change_id, position, operation) v
    '{"type": "concept/update", "field": "title", "value": "Main Title"}');
 
 select results_eq(
-  $$select branch_id, seq from public.operations order by branch_id, seq$$,
+  $$select branch_id, seq from public.operations
+    where branch_id in (
+      'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      'ffffffff-ffff-4fff-8fff-ffffffffffff'
+    )
+    order by branch_id, seq$$,
   $$values
       ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'::uuid, 1::bigint),
       ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'::uuid, 2::bigint),
@@ -34,7 +39,9 @@ select results_eq(
 );
 
 select results_eq(
-  $$select head from public.branches order by id$$,
+  $$select head from public.branches
+    where concept_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+    order by id$$,
   $$values (3::bigint), (1::bigint)$$,
   'Each branch head points at its latest operation'
 );
@@ -50,7 +57,8 @@ select results_eq(
 );
 
 select results_eq(
-  $$select title from public.concepts$$,
+  $$select title from public.concepts
+    where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'$$,
   array['Main Title'],
   'The concept title follows Main''s title operations, not other branches'''
 );

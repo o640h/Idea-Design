@@ -112,23 +112,23 @@ current session state.
   into one operation.
 - [x] Mark position and formatting operations as layout, so later comparisons
   and merges can ignore them. Keep each person's viewport out of the log.
-- [ ] Store periodic snapshots, and open a concept from its latest snapshot
+- [x] Store periodic snapshots, and open a concept from its latest snapshot
   plus the operations after it.
 - [x] Rebuild undo and redo on the log by appending inverse operations, never
   by removing entries.
-- [ ] Queue unsent operations in an IndexedDB outbox, flush them in order and
+- [x] Queue unsent operations in an IndexedDB outbox, flush them in order and
   show Saving, Saved and Save Failed.
-- [ ] On reopen, offer to apply or discard any operations left in the outbox.
-- [ ] Let the server assign operation order. Pull remote operations on focus
+- [x] On reopen, offer to apply or discard any operations left in the outbox.
+- [x] Let the server assign operation order. Pull remote operations on focus
   and resolve edits from other tabs or devices per component field, with the
   last write winning. Team editing in Phase 8 reuses this rule.
 - [x] Record the author of every operation, even while all workspaces are
   personal, so shared history needs no migration later.
-- [ ] Add account sign-in. Place every concept in the user's Personal
+- [x] Add account sign-in. Place every concept in the user's Personal
   workspace and reopen the last concept used.
 - [x] Enforce per-user access in database policies and server endpoints,
   written against workspace membership rather than a single owner.
-- [ ] Move deleted concepts to a recoverable Trash rather than deleting them
+- [x] Move deleted concepts to a recoverable Trash rather than deleting them
   immediately.
 - [ ] Export and import the current concept as validated, versioned JSON.
 

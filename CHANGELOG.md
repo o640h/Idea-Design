@@ -30,4 +30,9 @@ Notable changes to Idea Design are recorded here.
 - Store each branch as an append-only operation log with snapshots, give
   access through workspace membership and keep deleted concepts in Trash.
 - Sign in with an emailed link, and give each account a Personal workspace.
+- Save concepts through an IndexedDB outbox with a Saving, Saved and Save Failed
+  status, pull edits from other tabs on focus, reopen the last concept used and
+  offer to apply changes left unsaved by a closed session.
+- Move deleted concepts to a Trash in the Concepts panel, with Restore and
+  Delete Permanently.
 - Save text after a pause in typing, keeping one undo step per edit.

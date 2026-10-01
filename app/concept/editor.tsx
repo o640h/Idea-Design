@@ -10,20 +10,30 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import {
+  type ConceptSummary,
+  emptyConcept,
+  loadEditor,
+} from "@/lib/concepts/database";
 import {
   type ChangeOptions,
   createEditorState,
   type EditorAction,
   type EditorState,
   editorReducer,
-  getConceptLayout,
 } from "@/lib/concepts/editor";
 import type { ConceptId, Workspace } from "@/lib/concepts/model";
 import { createClient } from "@/lib/supabase/client";
 import ConceptCanvas, { type CanvasDisplay } from "./canvas";
 import ConceptPanel from "./concept_panel";
 import Menu from "./menu";
+import {
+  type SaveStatus as SaveStatusValue,
+  type SessionBranch,
+  type SessionConcept,
+  useSync,
+} from "./sync";
 
 /** Lucide's Split without its arrowheads, as drawn in the Figma rail. */
 const Lineage = createLucideIcon("lineage", [
@@ -64,34 +74,30 @@ const railIconProps = {
   className: "text-[var(--text-rail)]",
 } as const;
 
-interface SessionBranch {
-  id: string;
-  title: string;
-  editor: EditorState;
+interface ConceptEditorProps {
+  workspace: Workspace;
+  email: string | undefined;
+  concepts: ConceptSummary[];
+  /** The concept to open first, already loaded on the server. */
+  opened: { id: ConceptId; editor: EditorState };
 }
 
-interface SessionConcept {
-  id: ConceptId;
-  branches: SessionBranch[];
-}
-
-function createSessionConcept(workspace: Workspace): SessionConcept {
+function newConcept(workspace: Workspace): SessionConcept {
   const id = crypto.randomUUID();
-  const editor = createEditorState(
-    {
-      id,
-      workspaceId: workspace.id,
-      title: "",
-      description: "",
-      components: [],
-      relationships: [],
-    },
-    { conceptId: id, components: [], viewport: { x: 0, y: 0, zoom: 1 } },
-  );
+  const mainBranchId = crypto.randomUUID();
 
   return {
     id,
-    branches: [{ id: crypto.randomUUID(), title: "Main", editor }],
+    title: "",
+    deletedAt: null,
+    mainBranchId,
+    branches: [
+      {
+        id: mainBranchId,
+        title: "Main",
+        editor: createEditorState(emptyConcept(id, workspace.id)),
+      },
+    ],
   };
 }
 
@@ -105,35 +111,44 @@ function updateConcept(
   );
 }
 
+function conceptTitle(concept: SessionConcept) {
+  return concept.branches?.[0].editor.present.concept.title ?? concept.title;
+}
+
 export default function ConceptEditor({
   workspace,
   email,
-}: {
-  workspace: Workspace;
-  email: string | undefined;
-}) {
+  concepts: summaries,
+  opened,
+}: ConceptEditorProps) {
   const router = useRouter();
-  // Concepts are held in memory until saving is added.
-  const [concepts, setConcepts] = useState(() => [
-    createSessionConcept(workspace),
-  ]);
-  const [activeId, setActiveId] = useState<ConceptId>(() => concepts[0].id);
+  const [concepts, setConcepts] = useState<SessionConcept[]>(() =>
+    summaries.map((summary) => ({
+      ...summary,
+      branches:
+        summary.id === opened.id
+          ? [{ id: summary.mainBranchId, title: "Main", editor: opened.editor }]
+          : null,
+    })),
+  );
+  const [activeId, setActiveId] = useState(opened.id);
   const [activeBranchId, setActiveBranchId] = useState(
-    () => concepts[0].branches[0].id,
+    () => summaries.find(({ id }) => id === opened.id)?.mainBranchId ?? "",
   );
   const [panelOpen, setPanelOpen] = useState(true);
   const [display, setDisplay] = useState<CanvasDisplay>({
     borders: false,
     labels: true,
   });
+  const loading = useRef(new Set<ConceptId>());
+  const sync = useSync(concepts, setConcepts);
 
   const activeConcept =
     concepts.find((concept) => concept.id === activeId) ?? concepts[0];
   const activeBranch =
-    activeConcept.branches.find((branch) => branch.id === activeBranchId) ??
-    activeConcept.branches[0];
-  const activeEditor = activeBranch.editor;
-  const activeTitle = activeEditor.present.concept.title || "Untitled Concept";
+    activeConcept.branches?.find((branch) => branch.id === activeBranchId) ??
+    activeConcept.branches?.[0];
+  const liveConcepts = concepts.filter(({ deletedAt }) => !deletedAt);
 
   const dispatchTo = useCallback(
     (
@@ -145,83 +160,164 @@ export default function ConceptEditor({
       setConcepts((current) =>
         updateConcept(current, id, (concept) => ({
           ...concept,
-          branches: concept.branches.map((branch) =>
-            !branchId || branch.id === branchId
-              ? {
-                  ...branch,
-                  editor: editorReducer(branch.editor, action, options),
-                }
-              : branch,
-          ),
+          branches:
+            concept.branches?.map((branch) =>
+              !branchId || branch.id === branchId
+                ? {
+                    ...branch,
+                    editor: editorReducer(branch.editor, action, options),
+                  }
+                : branch,
+            ) ?? null,
         })),
       ),
     [],
   );
   const dispatch = useCallback(
     (action: EditorAction, options?: ChangeOptions) =>
-      dispatchTo(activeId, action, activeBranch.id, options),
-    [dispatchTo, activeId, activeBranch.id],
+      dispatchTo(activeId, action, activeBranchId, options),
+    [dispatchTo, activeId, activeBranchId],
   );
 
-  function createConcept() {
-    const concept = createSessionConcept(workspace);
-    setConcepts((current) => [...current, concept]);
-    selectBranch(concept.id, concept.branches[0].id);
+  /** Opens a concept from the server the first time it is needed. */
+  async function load(concept: SessionConcept) {
+    if (concept.branches || loading.current.has(concept.id)) {
+      return;
+    }
+
+    loading.current.add(concept.id);
+
+    try {
+      const editor = await loadEditor(createClient(), concept, workspace.id);
+      setConcepts((current) =>
+        updateConcept(current, concept.id, (loaded) => ({
+          ...loaded,
+          branches: loaded.branches ?? [
+            { id: concept.mainBranchId, title: "Main", editor },
+          ],
+        })),
+      );
+    } finally {
+      loading.current.delete(concept.id);
+    }
   }
 
   function selectBranch(conceptId: ConceptId, branchId: string) {
+    const concept = concepts.find(({ id }) => id === conceptId);
+
     setActiveId(conceptId);
     setActiveBranchId(branchId);
+    // Read on the server, so the next visit opens this concept straight away.
+    // biome-ignore lint/suspicious/noDocumentCookie: the Cookie Store API is not in every supported browser
+    document.cookie = `last_concept=${conceptId}; path=/; max-age=31536000; samesite=lax`;
+
+    if (concept) {
+      void load(concept);
+    }
+  }
+
+  function createConcept() {
+    const concept = newConcept(workspace);
+
+    sync.enqueue({
+      kind: "concept",
+      id: crypto.randomUUID(),
+      conceptId: concept.id,
+      workspaceId: workspace.id,
+      branchId: concept.mainBranchId,
+    });
+    setConcepts((current) => [...current, concept]);
+    selectBranch(concept.id, concept.mainBranchId);
   }
 
   function createBranch() {
-    const main = activeConcept.branches[0].editor;
+    const main = activeConcept.branches?.[0].editor;
+
+    if (!main) {
+      return;
+    }
+
     const branch: SessionBranch = {
       id: crypto.randomUUID(),
-      title: `Alternative ${activeConcept.branches.length}`,
-      editor: createEditorState(
-        structuredClone(main.present.concept),
-        structuredClone(getConceptLayout(main)),
-      ),
+      title: `Alternative ${activeConcept.branches?.length}`,
+      editor: {
+        ...createEditorState(structuredClone(main.present)),
+        viewport: main.viewport,
+      },
     };
     setConcepts((current) =>
       updateConcept(current, activeConcept.id, (concept) => ({
         ...concept,
-        branches: [...concept.branches, branch],
+        branches: [...(concept.branches ?? []), branch],
       })),
     );
     selectBranch(activeConcept.id, branch.id);
+  }
+
+  function renameConcept(id: ConceptId, title: string) {
+    const concept = concepts.find((candidate) => candidate.id === id);
+
+    if (concept) {
+      void load(concept).then(() =>
+        dispatchTo(id, {
+          type: "concept/update",
+          field: "title",
+          value: title,
+        }),
+      );
+    }
   }
 
   function renameBranch(conceptId: ConceptId, branchId: string, title: string) {
     setConcepts((current) =>
       updateConcept(current, conceptId, (concept) => ({
         ...concept,
-        branches: concept.branches.map((branch) =>
-          branch.id === branchId ? { ...branch, title } : branch,
-        ),
+        branches:
+          concept.branches?.map((branch) =>
+            branch.id === branchId ? { ...branch, title } : branch,
+          ) ?? null,
       })),
     );
   }
 
-  function deleteConcept(id: ConceptId) {
-    const index = concepts.findIndex((concept) => concept.id === id);
-    const remaining = concepts.filter((concept) => concept.id !== id);
-    const next = remaining.length
-      ? remaining
-      : [createSessionConcept(workspace)];
+  function setTrashed(id: ConceptId, deletedAt: string | null) {
+    sync.enqueue({
+      kind: "trash",
+      id: crypto.randomUUID(),
+      conceptId: id,
+      deletedAt,
+    });
+    setConcepts((current) =>
+      updateConcept(current, id, (concept) => ({ ...concept, deletedAt })),
+    );
+  }
 
-    setConcepts(next);
+  function trashConcept(id: ConceptId) {
+    setTrashed(id, new Date().toISOString());
 
-    if (id === activeConcept.id) {
-      const concept = next[Math.min(index, next.length - 1)];
-      selectBranch(concept.id, concept.branches[0].id);
+    if (id !== activeConcept.id) {
+      return;
     }
+
+    const index = liveConcepts.findIndex((concept) => concept.id === id);
+    const remaining = liveConcepts.filter((concept) => concept.id !== id);
+    const next = remaining[Math.min(index, remaining.length - 1)];
+
+    if (next) {
+      selectBranch(next.id, next.mainBranchId);
+    } else {
+      createConcept();
+    }
+  }
+
+  function deleteForever(id: ConceptId) {
+    sync.enqueue({ kind: "delete", id: crypto.randomUUID(), conceptId: id });
+    setConcepts((current) => current.filter((concept) => concept.id !== id));
   }
 
   return (
     <div className="editor-stage">
-      <div className="editor-window">
+      <div className="editor-window" inert={sync.leftOver > 0}>
         <header className="flex h-9 shrink-0 items-center border-b border-[var(--border-header)] bg-[var(--surface-shell)] px-[9px]">
           <Image
             src="/icons/idea_design_logo.svg"
@@ -240,12 +336,13 @@ export default function ConceptEditor({
             <span aria-hidden="true" className="px-2">
               /
             </span>
-            <span>{activeTitle}</span>
+            <span>{conceptTitle(activeConcept) || "Untitled Concept"}</span>
             <span aria-hidden="true" className="px-2">
               /
             </span>
-            <span aria-current="page">{activeBranch.title}</span>
+            <span aria-current="page">{activeBranch?.title ?? "Main"}</span>
           </nav>
+          <SaveStatus status={sync.status} onRetry={sync.retry} />
         </header>
 
         <div className="flex min-h-0 flex-1">
@@ -309,25 +406,29 @@ export default function ConceptEditor({
             {panelOpen && (
               <ConceptPanel
                 workspaceTitle={workspace.title}
-                concepts={concepts.map(({ id, branches }) => ({
-                  id,
-                  title: branches[0].editor.present.concept.title,
-                  branches,
+                concepts={liveConcepts.map((concept) => ({
+                  id: concept.id,
+                  title: conceptTitle(concept),
+                  branches: concept.branches ?? [
+                    { id: concept.mainBranchId, title: "Main" },
+                  ],
                 }))}
+                trash={concepts
+                  .filter(({ deletedAt }) => deletedAt)
+                  .map((concept) => ({
+                    id: concept.id,
+                    title: conceptTitle(concept),
+                  }))}
                 activeConceptId={activeConcept.id}
-                activeBranchId={activeBranch.id}
+                activeBranchId={activeBranch?.id ?? activeConcept.mainBranchId}
                 onSelect={selectBranch}
                 onCreate={createConcept}
                 onCreateBranch={createBranch}
-                onRename={(id, title) =>
-                  dispatchTo(id, {
-                    type: "concept/update",
-                    field: "title",
-                    value: title,
-                  })
-                }
+                onRename={renameConcept}
                 onRenameBranch={renameBranch}
-                onDelete={deleteConcept}
+                onDelete={trashConcept}
+                onRestore={(id) => setTrashed(id, null)}
+                onDeleteForever={deleteForever}
                 onClose={() => setPanelOpen(false)}
               />
             )}
@@ -337,16 +438,79 @@ export default function ConceptEditor({
             className="min-w-0 flex-1 overflow-hidden rounded-l-xl border-l border-[var(--border-subtle)] bg-[var(--surface-canvas)]"
             aria-label="Concept Editor"
           >
-            <ConceptCanvas
-              key={activeBranch.id}
-              state={activeEditor}
-              dispatch={dispatch}
-              display={display}
-              onDisplayChange={setDisplay}
-            />
+            {activeBranch && (
+              <ConceptCanvas
+                key={activeBranch.id}
+                state={activeBranch.editor}
+                dispatch={dispatch}
+                display={display}
+                onDisplayChange={setDisplay}
+              />
+            )}
           </main>
         </div>
       </div>
+
+      {sync.leftOver > 0 && (
+        <div
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="left-over-title"
+          className="menu-surface fixed top-1/2 left-1/2 z-50 flex w-72 -translate-1/2 flex-col gap-3 p-4"
+        >
+          <h2 id="left-over-title" className="text-[13px] font-medium">
+            Unsaved Changes
+          </h2>
+          <p className="text-[11px] leading-4 text-[var(--text-tertiary)]">
+            An earlier session closed before saving {sync.leftOver}{" "}
+            {sync.leftOver === 1 ? "change" : "changes"}. Apply them to your
+            concepts, or discard them?
+          </p>
+          <div className="flex justify-end gap-1">
+            <button
+              type="button"
+              className="menu-item"
+              onClick={() => void sync.discardLeftOver()}
+            >
+              Discard
+            </button>
+            <button
+              type="button"
+              className="menu-item bg-[var(--surface-control)] text-[var(--text-primary)]"
+              onClick={() => void sync.applyLeftOver()}
+            >
+              Apply
+            </button>
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function SaveStatus({
+  status,
+  onRetry,
+}: {
+  status: SaveStatusValue;
+  onRetry: () => void;
+}) {
+  return (
+    <output className="ml-auto pr-1 text-[11px]">
+      {status === "failed" ? (
+        <button
+          type="button"
+          title="Retry"
+          onClick={onRetry}
+          className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+        >
+          Save Failed
+        </button>
+      ) : (
+        <span className="text-[var(--text-tertiary)]">
+          {status === "saving" ? "Saving…" : "Saved"}
+        </span>
+      )}
+    </output>
   );
 }

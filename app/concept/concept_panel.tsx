@@ -2,6 +2,7 @@
 
 import {
   ChevronLeft,
+  ChevronRight,
   ChevronsDownUp,
   ChevronsUpDown,
   FilePlusCorner,
@@ -20,6 +21,7 @@ interface ConceptPanelProps {
     title: string;
     branches: { id: string; title: string }[];
   }[];
+  trash: { id: ConceptId; title: string }[];
   activeConceptId: ConceptId;
   activeBranchId: string;
   onSelect: (id: ConceptId, branchId: string) => void;
@@ -32,6 +34,8 @@ interface ConceptPanelProps {
     title: string,
   ) => void;
   onDelete: (id: ConceptId) => void;
+  onRestore: (id: ConceptId) => void;
+  onDeleteForever: (id: ConceptId) => void;
   onClose: () => void;
 }
 
@@ -104,6 +108,7 @@ function RenameField({
 export default function ConceptPanel({
   workspaceTitle,
   concepts,
+  trash,
   activeConceptId,
   activeBranchId,
   onSelect,
@@ -112,9 +117,12 @@ export default function ConceptPanel({
   onRename,
   onRenameBranch,
   onDelete,
+  onRestore,
+  onDeleteForever,
   onClose,
 }: ConceptPanelProps) {
   const [branchesOpen, setBranchesOpen] = useState(true);
+  const [trashOpen, setTrashOpen] = useState(false);
   const [renamingId, setRenamingId] = useState<ConceptId | null>(null);
   const [renamingBranchId, setRenamingBranchId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -127,7 +135,22 @@ export default function ConceptPanel({
       y: event.clientY,
       items: [
         { label: "Rename", onSelect: () => setRenamingId(id) },
-        { label: "Delete", onSelect: () => onDelete(id) },
+        { label: "Move to Trash", onSelect: () => onDelete(id) },
+      ],
+    });
+  }
+
+  function openTrashMenu(event: MouseEvent, id: ConceptId) {
+    event.preventDefault();
+    event.stopPropagation();
+    const bounds = event.currentTarget.getBoundingClientRect();
+    // A click opens the menu under the item; a right-click at the pointer.
+    setContextMenu({
+      x: event.type === "click" ? bounds.left : event.clientX,
+      y: event.type === "click" ? bounds.bottom : event.clientY,
+      items: [
+        { label: "Restore", onSelect: () => onRestore(id) },
+        { label: "Delete Permanently", onSelect: () => onDeleteForever(id) },
       ],
     });
   }
@@ -275,6 +298,46 @@ export default function ConceptPanel({
           );
         })}
       </ul>
+
+      {trash.length > 0 && (
+        <section aria-label="Trash" className="mt-auto pb-2">
+          <button
+            type="button"
+            aria-expanded={trashOpen}
+            onClick={() => setTrashOpen((open) => !open)}
+            className="eyebrow mb-[5px] flex items-center gap-1 pl-2.5 hover:text-[var(--text-tertiary)]"
+          >
+            <ChevronRight
+              aria-hidden="true"
+              size={9}
+              className={trashOpen ? "rotate-90" : undefined}
+            />
+            Trash
+            <span className="tabular-nums">{trash.length}</span>
+          </button>
+
+          {trashOpen && (
+            <ul className="flex flex-col px-[5px]">
+              {trash.map((concept) => (
+                <li key={concept.id}>
+                  <button
+                    type="button"
+                    aria-haspopup="menu"
+                    onClick={(event) => openTrashMenu(event, concept.id)}
+                    onContextMenu={(event) => openTrashMenu(event, concept.id)}
+                    className="flex h-[22px] w-full items-center gap-1.5 rounded-sm px-[7px] text-left text-[10.5px] leading-none text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]"
+                  >
+                    <span aria-hidden="true" className="concept-icon" />
+                    <span className="truncate">
+                      {concept.title || "Untitled Concept"}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       {contextMenu && (
         <ContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} />
