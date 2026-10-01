@@ -9,6 +9,7 @@ import {
   Squircle,
 } from "lucide-react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import {
   type ChangeOptions,
@@ -19,8 +20,10 @@ import {
   getConceptLayout,
 } from "@/lib/concepts/editor";
 import type { ConceptId, Workspace } from "@/lib/concepts/model";
+import { createClient } from "@/lib/supabase/client";
 import ConceptCanvas, { type CanvasDisplay } from "./canvas";
 import ConceptPanel from "./concept_panel";
+import Menu from "./menu";
 
 /** Lucide's Split without its arrowheads, as drawn in the Figma rail. */
 const Lineage = createLucideIcon("lineage", [
@@ -102,12 +105,15 @@ function updateConcept(
   );
 }
 
-export default function ConceptEditor() {
+export default function ConceptEditor({
+  workspace,
+  email,
+}: {
+  workspace: Workspace;
+  email: string | undefined;
+}) {
+  const router = useRouter();
   // Concepts are held in memory until saving is added.
-  const [workspace] = useState<Workspace>(() => ({
-    id: crypto.randomUUID(),
-    title: "Personal",
-  }));
   const [concepts, setConcepts] = useState(() => [
     createSessionConcept(workspace),
   ]);
@@ -274,14 +280,30 @@ export default function ConceptEditor() {
                 ))}
               </div>
 
-              <button
-                type="button"
-                aria-label="Settings"
-                disabled
-                className="mt-auto flex h-6 w-full shrink-0 items-center justify-center rounded-sm bg-[var(--surface-canvas)]"
+              <Menu
+                label="Settings"
+                above
+                trigger={<Settings {...railIconProps} />}
+                triggerClassName="mt-auto flex h-6 w-full shrink-0 items-center justify-center rounded-sm bg-[var(--surface-canvas)]"
               >
-                <Settings {...railIconProps} />
-              </button>
+                {() => (
+                  <>
+                    <p className="px-2 py-1.5 text-[10px] text-[var(--text-tertiary)]">
+                      {email}
+                    </p>
+                    <button
+                      type="button"
+                      className="menu-item"
+                      onClick={async () => {
+                        await createClient().auth.signOut();
+                        router.replace("/sign-in");
+                      }}
+                    >
+                      Sign Out
+                    </button>
+                  </>
+                )}
+              </Menu>
             </nav>
 
             {panelOpen && (

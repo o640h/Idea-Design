@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(22);
+select plan(23);
 
 insert into auth.users (id, email) values
   ('11111111-1111-4111-8111-111111111111', 'owner@example.test'),
@@ -40,13 +40,19 @@ set local request.jwt.claim.sub = '11111111-1111-4111-8111-111111111111';
 
 select results_eq(
   $$select
-      (select count(*) from public.workspaces),
+      (select count(*) from public.workspaces where not personal),
       (select count(*) from public.concepts),
       (select count(*) from public.branches),
       (select count(*) from public.operations),
       (select count(*) from public.snapshots)$$,
   $$values (1::bigint, 1::bigint, 1::bigint, 1::bigint, 1::bigint)$$,
   'Members see only their workspace and its concepts, branches, operations and snapshots'
+);
+
+select results_eq(
+  $$select title, personal from public.workspaces where personal$$,
+  $$values ('Personal', true)$$,
+  'New accounts get a Personal workspace of their own'
 );
 
 select is_empty(
@@ -126,7 +132,7 @@ select throws_ok(
 set local request.jwt.claim.sub = '33333333-3333-4333-8333-333333333333';
 
 select results_eq(
-  'select count(*) from public.workspaces',
+  'select count(*) from public.workspaces where not personal',
   array[1::bigint],
   'Viewers see the workspace they belong to'
 );

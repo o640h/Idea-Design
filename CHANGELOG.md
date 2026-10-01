@@ -29,4 +29,5 @@ Notable changes to Idea Design are recorded here.
   inverse operations.
 - Store each branch as an append-only operation log with snapshots, give
   access through workspace membership and keep deleted concepts in Trash.
+- Sign in with an emailed link, and give each account a Personal workspace.
 - Save text after a pause in typing, keeping one undo step per edit.
