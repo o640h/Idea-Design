@@ -41,8 +41,10 @@ body {
   font-family: var(--font-sans);
 }
 
-button:disabled {
-  cursor: default;
+/* Controls that act on click show a hand; text and the canvas keep theirs. */
+button:not(:disabled),
+select:not(:disabled) {
+  cursor: pointer;
 }
 
 :focus-visible {
@@ -158,10 +160,18 @@ button:disabled {
 }
 
 .menu-surface {
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
   background: var(--surface-raised);
   box-shadow: 0 6px 16px rgb(0 0 0 / 0.35);
+  animation: menu-in 140ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    scale: 0.97;
+  }
 }
 
 .menu-item {
@@ -170,11 +180,14 @@ button:disabled {
   gap: 6px;
   height: 24px;
   padding: 0 8px;
-  border-radius: 4px;
+  border-radius: 2px;
   font-size: 10px;
   font-weight: 500;
   color: var(--text-tertiary);
   white-space: nowrap;
+  transition:
+    color 120ms ease,
+    background-color 120ms ease;
 }
 
 .menu-item:hover,
@@ -228,7 +241,8 @@ button:disabled {
   background: var(--surface-canvas);
 }
 
-/* The width scales with the title size set from the format bar. */
+/* The width scales with the title size set from the format bar, until the
+   block is resized to a width of its own. */
 .concept-block {
   width: max-content;
   min-width: 96px;
@@ -237,6 +251,42 @@ button:disabled {
   border: 1px solid transparent;
   border-radius: 6px;
   transition: border-color 120ms ease;
+}
+
+.concept-block[data-fixed-width] {
+  width: 100%;
+  max-width: none;
+}
+
+/* Follows the node while dragging; afterwards the height is a minimum. */
+.concept-block[data-resizing] {
+  height: 100%;
+}
+
+/* A small grip inside the bottom-right corner that resizes the block.
+   Matches React Flow's corner handle selector so these positions win. */
+.concept-block .block-resize.handle.bottom.right {
+  top: auto;
+  right: 1px;
+  bottom: 1px;
+  left: auto;
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 0;
+  background:
+    linear-gradient(var(--text-tertiary), var(--text-tertiary)) right 3px bottom
+    3px / 6px 1px no-repeat,
+    linear-gradient(var(--text-tertiary), var(--text-tertiary)) right 3px bottom
+    6px / 3px 1px no-repeat;
+  opacity: 0.7;
+  translate: 0 0;
+  cursor: nwse-resize;
+  transition: opacity 120ms ease;
+}
+
+.concept-block .block-resize.handle.bottom.right:hover {
+  opacity: 1;
 }
 
 .concept-canvas[data-borders] .concept-block:not(.is-selected) {
@@ -360,11 +410,132 @@ button:disabled {
   opacity: 0.45;
 }
 
+/* The Settings gear turns as its menu opens and back as it closes. */
+.settings-trigger svg {
+  transition: rotate 600ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.settings-trigger[aria-expanded="true"] svg {
+  rotate: 120deg;
+}
+
+/* Concepts panel: rows ease in, and branch and Trash lists open smoothly. */
+.panel-row {
+  animation: panel-row-in 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes panel-row-in {
+  from {
+    opacity: 0;
+    translate: -4px 0;
+  }
+}
+
+.collapsible {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 200ms ease;
+}
+
+.collapsible[data-open] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.collapsible > * {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Shown in the breadcrumb only while a save is on its way, or has failed. */
+.save-indicator {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  margin-left: 12px;
+  opacity: 0;
+  translate: -4px 0;
+  filter: blur(2px);
+  pointer-events: none;
+  transition:
+    opacity 300ms ease,
+    translate 400ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 300ms ease;
+}
+
+.save-indicator[data-state="saving"],
+.save-indicator[data-state="failed"] {
+  opacity: 1;
+  translate: 0 0;
+  filter: none;
+  pointer-events: auto;
+}
+
+/* Centred on the label, which alone sets the baseline the breadcrumb aligns to. */
+.save-indicator::before {
+  content: "";
+  align-self: center;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.save-indicator[data-state="saving"]::before {
+  animation: save-pulse 1.2s ease-in-out infinite;
+}
+
+.save-indicator[data-state="saving"] .save-indicator-label {
+  background:
+    linear-gradient(
+      90deg,
+      var(--text-tertiary) 35%,
+      var(--text-primary) 50%,
+      var(--text-tertiary) 65%
+    )
+    0 0 / 300% 100%;
+  background-clip: text;
+  color: transparent;
+  animation: save-shimmer 1.6s linear infinite;
+}
+
+.save-indicator[data-state="failed"]::before {
+  background: var(--text-secondary);
+}
+
+@keyframes save-pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@keyframes save-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .concept-block,
   .concept-block *,
-  .canvas-orb {
+  .canvas-orb,
+  .collapsible,
+  .save-indicator,
+  .settings-trigger svg {
     transition: none;
+  }
+
+  .menu-surface,
+  .panel-row,
+  .save-indicator::before,
+  .save-indicator .save-indicator-label {
+    animation: none;
   }
 }
 

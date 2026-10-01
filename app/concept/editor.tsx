@@ -10,7 +10,13 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useCallback, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   type ConceptSummary,
   emptyConcept,
@@ -24,12 +30,19 @@ import {
   editorReducer,
 } from "@/lib/concepts/editor";
 import type { ConceptId, Workspace } from "@/lib/concepts/model";
+import type { Operation } from "@/lib/concepts/operations";
+import {
+  exportConcept,
+  ImportError,
+  importOperations,
+  parseConceptExport,
+} from "@/lib/concepts/transfer";
 import { createClient } from "@/lib/supabase/client";
 import ConceptCanvas, { type CanvasDisplay } from "./canvas";
 import ConceptPanel from "./concept_panel";
 import Menu from "./menu";
 import {
-  type SaveStatus as SaveStatusValue,
+  type SaveStatus,
   type SessionBranch,
   type SessionConcept,
   useSync,
@@ -82,7 +95,10 @@ interface ConceptEditorProps {
   opened: { id: ConceptId; editor: EditorState };
 }
 
-function newConcept(workspace: Workspace): SessionConcept {
+function newConcept(
+  workspace: Workspace,
+  operations: Operation[],
+): SessionConcept {
   const id = crypto.randomUUID();
   const mainBranchId = crypto.randomUUID();
 
@@ -95,7 +111,10 @@ function newConcept(workspace: Workspace): SessionConcept {
       {
         id: mainBranchId,
         title: "Main",
-        editor: createEditorState(emptyConcept(id, workspace.id)),
+        editor: editorReducer(
+          createEditorState(emptyConcept(id, workspace.id)),
+          { type: "change", operations },
+        ),
       },
     ],
   };
@@ -140,6 +159,7 @@ export default function ConceptEditor({
     borders: false,
     labels: true,
   });
+  const [importFailure, setImportFailure] = useState<string | null>(null);
   const loading = useRef(new Set<ConceptId>());
   const sync = useSync(concepts, setConcepts);
 
@@ -181,7 +201,11 @@ export default function ConceptEditor({
 
   /** Opens a concept from the server the first time it is needed. */
   async function load(concept: SessionConcept) {
-    if (concept.branches || loading.current.has(concept.id)) {
+    if (concept.branches) {
+      return concept.branches[0].editor;
+    }
+
+    if (loading.current.has(concept.id)) {
       return;
     }
 
@@ -197,6 +221,7 @@ export default function ConceptEditor({
           ],
         })),
       );
+      return editor;
     } finally {
       loading.current.delete(concept.id);
     }
@@ -216,8 +241,8 @@ export default function ConceptEditor({
     }
   }
 
-  function createConcept() {
-    const concept = newConcept(workspace);
+  function createConcept(operations: Operation[] = []) {
+    const concept = newConcept(workspace, operations);
 
     sync.enqueue({
       kind: "concept",
@@ -228,6 +253,39 @@ export default function ConceptEditor({
     });
     setConcepts((current) => [...current, concept]);
     selectBranch(concept.id, concept.mainBranchId);
+  }
+
+  async function downloadConcept(id: ConceptId) {
+    const concept = concepts.find((candidate) => candidate.id === id);
+    const editor = concept && (await load(concept));
+
+    if (!editor) {
+      return;
+    }
+
+    const title = editor.present.concept.title || "Untitled Concept";
+    const url = URL.createObjectURL(
+      new Blob([JSON.stringify(exportConcept(editor.present), null, 2)], {
+        type: "application/json",
+      }),
+    );
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${title.replace(/[\\/:*?"<>|]/g, "")}.json`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url));
+  }
+
+  async function importConcept(file: File) {
+    try {
+      createConcept(importOperations(parseConceptExport(await file.text())));
+    } catch (error) {
+      if (!(error instanceof ImportError)) {
+        throw error;
+      }
+
+      setImportFailure(error.message);
+    }
   }
 
   function createBranch() {
@@ -317,7 +375,10 @@ export default function ConceptEditor({
 
   return (
     <div className="editor-stage">
-      <div className="editor-window" inert={sync.leftOver > 0}>
+      <div
+        className="editor-window"
+        inert={sync.leftOver > 0 || importFailure !== null}
+      >
         <header className="flex h-9 shrink-0 items-center border-b border-[var(--border-header)] bg-[var(--surface-shell)] px-[9px]">
           <Image
             src="/icons/idea_design_logo.svg"
@@ -328,7 +389,7 @@ export default function ConceptEditor({
           />
           <nav
             aria-label="Breadcrumb"
-            className={`truncate pl-[21px] text-[11px] text-[var(--text-tertiary)] ${
+            className={`truncate pl-[21px] text-[11px] text-[var(--text-tertiary)] transition-[padding] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
               panelOpen ? "md:pl-[137px]" : ""
             }`}
           >
@@ -341,13 +402,13 @@ export default function ConceptEditor({
               /
             </span>
             <span aria-current="page">{activeBranch?.title ?? "Main"}</span>
+            <SaveIndicator status={sync.status} onRetry={sync.retry} />
           </nav>
-          <SaveStatus status={sync.status} onRetry={sync.retry} />
         </header>
 
         <div className="flex min-h-0 flex-1">
           <aside
-            className={`flex shrink-0 bg-[var(--surface-shell)] ${
+            className={`flex w-[38px] shrink-0 overflow-hidden bg-[var(--surface-shell)] transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
               panelOpen ? "md:w-40" : ""
             }`}
             aria-label="Editor Navigation"
@@ -381,7 +442,7 @@ export default function ConceptEditor({
                 label="Settings"
                 above
                 trigger={<Settings {...railIconProps} />}
-                triggerClassName="mt-auto flex h-6 w-full shrink-0 items-center justify-center rounded-sm bg-[var(--surface-canvas)]"
+                triggerClassName="settings-trigger mt-auto flex h-6 w-full shrink-0 items-center justify-center rounded-sm bg-[var(--surface-canvas)]"
               >
                 {() => (
                   <>
@@ -403,7 +464,13 @@ export default function ConceptEditor({
               </Menu>
             </nav>
 
-            {panelOpen && (
+            {/* Kept mounted so the panel can slide closed. */}
+            <div
+              inert={!panelOpen}
+              className={`flex w-[122px] shrink-0 transition-opacity duration-200 ${
+                panelOpen ? "opacity-100" : "opacity-0"
+              }`}
+            >
               <ConceptPanel
                 workspaceTitle={workspace.title}
                 concepts={liveConcepts.map((concept) => ({
@@ -422,7 +489,9 @@ export default function ConceptEditor({
                 activeConceptId={activeConcept.id}
                 activeBranchId={activeBranch?.id ?? activeConcept.mainBranchId}
                 onSelect={selectBranch}
-                onCreate={createConcept}
+                onCreate={() => createConcept()}
+                onImport={importConcept}
+                onExport={downloadConcept}
                 onCreateBranch={createBranch}
                 onRename={renameConcept}
                 onRenameBranch={renameBranch}
@@ -431,7 +500,7 @@ export default function ConceptEditor({
                 onDeleteForever={deleteForever}
                 onClose={() => setPanelOpen(false)}
               />
-            )}
+            </div>
           </aside>
 
           <main
@@ -452,65 +521,138 @@ export default function ConceptEditor({
       </div>
 
       {sync.leftOver > 0 && (
-        <div
-          role="alertdialog"
-          aria-modal="true"
-          aria-labelledby="left-over-title"
-          className="menu-surface fixed top-1/2 left-1/2 z-50 flex w-72 -translate-1/2 flex-col gap-3 p-4"
+        <Notice
+          title="Unsaved Changes"
+          actions={
+            <>
+              <button
+                type="button"
+                className="menu-item"
+                onClick={() => void sync.discardLeftOver()}
+              >
+                Discard
+              </button>
+              <button
+                type="button"
+                className="menu-item bg-[var(--surface-control)] text-[var(--text-primary)]"
+                onClick={() => void sync.applyLeftOver()}
+              >
+                Apply
+              </button>
+            </>
+          }
         >
-          <h2 id="left-over-title" className="text-[13px] font-medium">
-            Unsaved Changes
-          </h2>
-          <p className="text-[11px] leading-4 text-[var(--text-tertiary)]">
-            An earlier session closed before saving {sync.leftOver}{" "}
-            {sync.leftOver === 1 ? "change" : "changes"}. Apply them to your
-            concepts, or discard them?
-          </p>
-          <div className="flex justify-end gap-1">
-            <button
-              type="button"
-              className="menu-item"
-              onClick={() => void sync.discardLeftOver()}
-            >
-              Discard
-            </button>
+          An earlier session closed before saving {sync.leftOver}{" "}
+          {sync.leftOver === 1 ? "change" : "changes"}. Apply them to your
+          concepts, or discard them?
+        </Notice>
+      )}
+
+      {importFailure && (
+        <Notice
+          title="Could Not Import"
+          actions={
             <button
               type="button"
               className="menu-item bg-[var(--surface-control)] text-[var(--text-primary)]"
-              onClick={() => void sync.applyLeftOver()}
+              onClick={() => setImportFailure(null)}
             >
-              Apply
+              OK
             </button>
-          </div>
-        </div>
+          }
+        >
+          {importFailure}
+        </Notice>
       )}
     </div>
   );
 }
 
-function SaveStatus({
+/** Long enough to read, so a quick save does not flicker. */
+const SAVING_MIN_VISIBLE_MS = 900;
+
+function SaveIndicator({
   status,
   onRetry,
 }: {
-  status: SaveStatusValue;
+  status: SaveStatus;
   onRetry: () => void;
 }) {
+  const [saving, setSaving] = useState(false);
+  const shownAt = useRef(0);
+
+  useEffect(() => {
+    if (status === "saving") {
+      shownAt.current = Date.now();
+      setSaving(true);
+      return;
+    }
+
+    const timer = window.setTimeout(
+      () => setSaving(false),
+      SAVING_MIN_VISIBLE_MS - (Date.now() - shownAt.current),
+    );
+    return () => window.clearTimeout(timer);
+  }, [status]);
+
+  const state = status === "failed" ? "failed" : saving ? "saving" : "idle";
+
   return (
-    <output className="ml-auto pr-1 text-[11px]">
-      {status === "failed" ? (
+    <output className="save-indicator" data-state={state}>
+      {state === "failed" ? (
         <button
           type="button"
           title="Retry"
           onClick={onRetry}
-          className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+          className="text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
         >
           Save Failed
         </button>
       ) : (
-        <span className="text-[var(--text-tertiary)]">
-          {status === "saving" ? "Saving…" : "Saved"}
-        </span>
+        <>
+          <span aria-hidden="true" className="save-indicator-label">
+            Saving
+          </span>
+          <span className="sr-only">{state === "saving" ? "Saving" : ""}</span>
+        </>
       )}
     </output>
+  );
+}
+
+/** A small modal message; the editor behind it is made inert. */
+function Notice({
+  title,
+  children,
+  actions,
+}: {
+  title: string;
+  children: ReactNode;
+  actions: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    ref.current
+      ?.querySelector<HTMLButtonElement>("button:last-of-type")
+      ?.focus();
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="notice-title"
+      className="menu-surface fixed top-1/2 left-1/2 z-50 flex w-72 -translate-1/2 flex-col gap-3 p-4"
+    >
+      <h2 id="notice-title" className="text-[13px] font-medium">
+        {title}
+      </h2>
+      <p className="text-[11px] leading-4 text-[var(--text-tertiary)]">
+        {children}
+      </p>
+      <div className="flex justify-end gap-1">{actions}</div>
+    </div>
   );
 }

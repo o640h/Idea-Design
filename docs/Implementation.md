@@ -130,7 +130,7 @@ current session state.
   written against workspace membership rather than a single owner.
 - [x] Move deleted concepts to a recoverable Trash rather than deleting them
   immediately.
-- [ ] Export and import the current concept as validated, versioned JSON.
+- [x] Export and import the current concept as validated, versioned JSON.
 
 ### 2.4 Clarify the Canvas
 

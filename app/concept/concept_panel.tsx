@@ -26,6 +26,8 @@ interface ConceptPanelProps {
   activeBranchId: string;
   onSelect: (id: ConceptId, branchId: string) => void;
   onCreate: () => void;
+  onImport: (file: File) => void;
+  onExport: (id: ConceptId) => void;
   onCreateBranch: () => void;
   onRename: (id: ConceptId, title: string) => void;
   onRenameBranch: (
@@ -58,7 +60,7 @@ function HeaderButton({
       aria-expanded={expanded}
       disabled={!onClick}
       onClick={onClick}
-      className="grid size-5 place-items-center rounded-sm text-[var(--text-rail)] opacity-80 transition-opacity hover:opacity-100 disabled:opacity-40"
+      className="grid size-5 place-items-center rounded-sm text-[var(--text-rail)] opacity-80 transition-[opacity,background-color] duration-150 hover:bg-[var(--surface-raised)] hover:opacity-100 disabled:opacity-40 disabled:hover:bg-transparent"
     >
       <Icon aria-hidden="true" size={12} strokeWidth={1.6} />
     </button>
@@ -113,6 +115,8 @@ export default function ConceptPanel({
   activeBranchId,
   onSelect,
   onCreate,
+  onImport,
+  onExport,
   onCreateBranch,
   onRename,
   onRenameBranch,
@@ -121,11 +125,25 @@ export default function ConceptPanel({
   onDeleteForever,
   onClose,
 }: ConceptPanelProps) {
-  const [branchesOpen, setBranchesOpen] = useState(true);
+  // Concepts start expanded; compacting collapses them all, and opening one
+  // concept expands only that one.
+  const [collapsed, setCollapsed] = useState<ReadonlySet<ConceptId>>(
+    () => new Set(),
+  );
+  const allCollapsed = concepts.every(({ id }) => collapsed.has(id));
   const [trashOpen, setTrashOpen] = useState(false);
   const [renamingId, setRenamingId] = useState<ConceptId | null>(null);
   const [renamingBranchId, setRenamingBranchId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const importInput = useRef<HTMLInputElement>(null);
+
+  function expand(id: ConceptId) {
+    setCollapsed((current) => {
+      const next = new Set(current);
+      next.delete(id);
+      return next;
+    });
+  }
 
   function openConceptMenu(event: MouseEvent, id: ConceptId) {
     event.preventDefault();
@@ -135,6 +153,7 @@ export default function ConceptPanel({
       y: event.clientY,
       items: [
         { label: "Rename", onSelect: () => setRenamingId(id) },
+        { label: "Export", onSelect: () => onExport(id) },
         { label: "Move to Trash", onSelect: () => onDelete(id) },
       ],
     });
@@ -165,7 +184,13 @@ export default function ConceptPanel({
         setContextMenu({
           x: event.clientX,
           y: event.clientY,
-          items: [{ label: "New Concept", onSelect: onCreate }],
+          items: [
+            { label: "New Concept", onSelect: onCreate },
+            {
+              label: "Import Concept…",
+              onSelect: () => importInput.current?.click(),
+            },
+          ],
         });
       }}
     >
@@ -175,7 +200,7 @@ export default function ConceptPanel({
           Icon={FilePlusCorner}
           onClick={() => {
             onCreateBranch();
-            setBranchesOpen(true);
+            expand(activeConceptId);
           }}
         />
         <HeaderButton
@@ -184,10 +209,14 @@ export default function ConceptPanel({
           onClick={onCreate}
         />
         <HeaderButton
-          label={branchesOpen ? "Compact Concepts" : "Expand Concepts"}
-          Icon={branchesOpen ? ChevronsDownUp : ChevronsUpDown}
-          expanded={branchesOpen}
-          onClick={() => setBranchesOpen((open) => !open)}
+          label={allCollapsed ? "Expand Concepts" : "Compact Concepts"}
+          Icon={allCollapsed ? ChevronsUpDown : ChevronsDownUp}
+          expanded={!allCollapsed}
+          onClick={() =>
+            setCollapsed(
+              allCollapsed ? new Set() : new Set(concepts.map(({ id }) => id)),
+            )
+          }
         />
         <HeaderButton
           label="Collapse Panel"
@@ -201,9 +230,10 @@ export default function ConceptPanel({
       <ul className="flex flex-col px-[5px]">
         {concepts.map((concept) => {
           const active = concept.id === activeConceptId;
+          const open = !collapsed.has(concept.id);
 
           return (
-            <li key={concept.id}>
+            <li key={concept.id} className="panel-row">
               {renamingId === concept.id ? (
                 <RenameField
                   title={concept.title}
@@ -216,7 +246,7 @@ export default function ConceptPanel({
                   aria-current={active ? "page" : undefined}
                   onClick={() => {
                     onSelect(concept.id, concept.branches[0].id);
-                    setBranchesOpen(true);
+                    expand(concept.id);
                   }}
                   onContextMenu={(event) => openConceptMenu(event, concept.id)}
                   onDoubleClick={() => setRenamingId(concept.id)}
@@ -226,10 +256,10 @@ export default function ConceptPanel({
                       setRenamingId(concept.id);
                     }
                   }}
-                  className={`flex h-[22px] w-full items-center gap-1.5 rounded-sm px-[7px] text-left text-[10.5px] leading-none transition-colors ${
+                  className={`flex h-[22px] w-full items-center gap-1.5 rounded-sm px-[7px] text-left text-[10.5px] leading-none transition-colors duration-150 ${
                     active
                       ? "bg-[var(--surface-active)] text-[var(--text-primary)]"
-                      : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                      : "text-[var(--text-secondary)] hover:bg-[var(--surface-raised)] hover:text-[var(--text-primary)]"
                   }`}
                 >
                   <span aria-hidden="true" className="concept-icon" />
@@ -239,10 +269,14 @@ export default function ConceptPanel({
                 </button>
               )}
 
-              {branchesOpen && (
+              <div
+                className="collapsible"
+                data-open={open || undefined}
+                inert={!open}
+              >
                 <ul aria-label="Branches">
                   {concept.branches.map((branch) => (
-                    <li key={branch.id} className="relative">
+                    <li key={branch.id} className="panel-row relative">
                       <span aria-hidden="true" className="branch-line" />
                       {renamingBranchId === branch.id ? (
                         <RenameField
@@ -284,7 +318,7 @@ export default function ConceptPanel({
                               ],
                             });
                           }}
-                          className={`flex h-5 w-full items-center gap-[3px] rounded-sm pl-[18px] pr-1 text-left text-[10px] leading-none hover:bg-[var(--surface-active)] ${active && branch.id === activeBranchId ? "text-[var(--text-primary)]" : "text-[var(--text-tertiary)]"}`}
+                          className={`flex h-5 w-full items-center gap-[3px] rounded-sm pl-[18px] pr-1 text-left text-[10px] leading-none transition-colors duration-150 hover:bg-[var(--surface-raised)] ${active && branch.id === activeBranchId ? "text-[var(--text-primary)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"}`}
                         >
                           <span aria-hidden="true" className="branch-dot" />
                           <span className="truncate">{branch.title}</span>
@@ -293,39 +327,42 @@ export default function ConceptPanel({
                     </li>
                   ))}
                 </ul>
-              )}
+              </div>
             </li>
           );
         })}
       </ul>
 
       {trash.length > 0 && (
-        <section aria-label="Trash" className="mt-auto pb-2">
+        <section aria-label="Trash" className="panel-row mt-auto pb-2">
           <button
             type="button"
             aria-expanded={trashOpen}
             onClick={() => setTrashOpen((open) => !open)}
-            className="eyebrow mb-[5px] flex items-center gap-1 pl-2.5 hover:text-[var(--text-tertiary)]"
+            className="eyebrow mb-[5px] flex items-center gap-1 pl-2.5 transition-colors duration-150 hover:text-[var(--text-tertiary)]"
           >
             <ChevronRight
               aria-hidden="true"
               size={9}
-              className={trashOpen ? "rotate-90" : undefined}
+              className={`transition-transform duration-200 ${trashOpen ? "rotate-90" : ""}`}
             />
             Trash
-            <span className="tabular-nums">{trash.length}</span>
           </button>
 
-          {trashOpen && (
+          <div
+            className="collapsible"
+            data-open={trashOpen || undefined}
+            inert={!trashOpen}
+          >
             <ul className="flex flex-col px-[5px]">
               {trash.map((concept) => (
-                <li key={concept.id}>
+                <li key={concept.id} className="panel-row">
                   <button
                     type="button"
                     aria-haspopup="menu"
                     onClick={(event) => openTrashMenu(event, concept.id)}
                     onContextMenu={(event) => openTrashMenu(event, concept.id)}
-                    className="flex h-[22px] w-full items-center gap-1.5 rounded-sm px-[7px] text-left text-[10.5px] leading-none text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]"
+                    className="flex h-[22px] w-full items-center gap-1.5 rounded-sm px-[7px] text-left text-[10.5px] leading-none text-[var(--text-tertiary)] transition-colors duration-150 hover:bg-[var(--surface-raised)] hover:text-[var(--text-secondary)]"
                   >
                     <span aria-hidden="true" className="concept-icon" />
                     <span className="truncate">
@@ -335,9 +372,25 @@ export default function ConceptPanel({
                 </li>
               ))}
             </ul>
-          )}
+          </div>
         </section>
       )}
+
+      <input
+        ref={importInput}
+        type="file"
+        accept=".json,application/json"
+        hidden
+        onChange={(event) => {
+          const [file] = event.target.files ?? [];
+          // Cleared so choosing the same file again still imports it.
+          event.target.value = "";
+
+          if (file) {
+            onImport(file);
+          }
+        }}
+      />
 
       {contextMenu && (
         <ContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} />

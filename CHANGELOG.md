@@ -35,4 +35,11 @@ Notable changes to Idea Design are recorded here.
   offer to apply changes left unsaved by a closed session.
 - Move deleted concepts to a Trash in the Concepts panel, with Restore and
   Delete Permanently.
+- Export a concept as versioned JSON and import it as a new concept, keeping its
+  component and connection IDs.
+- Resize a component from its corner, setting its width and a minimum height,
+  or fit it back to its text.
+- Turn the Settings gear as its menu opens, and lift the Add button on hover.
+- Show the save state in the breadcrumb only while saving, animate the Concepts
+  panel, quieten menus and show a pointer over clickable controls.
 - Save text after a pause in typing, keeping one undo step per edit.

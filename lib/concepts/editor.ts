@@ -53,6 +53,8 @@ export type EditorAction =
   | { type: "selection/set"; selection: EditorSelection }
   | { type: "history/undo" }
   | { type: "history/redo" }
+  /** Several operations applied, saved and undone as one change. */
+  | { type: "change"; operations: Operation[] }
   | { type: "sync/seal" }
   | { type: "sync/pull"; rows: OperationRow[] };
 
@@ -106,10 +108,10 @@ function withPresent(
 
 function change(
   state: EditorState,
-  operation: Operation,
+  operations: Operation[],
   { continuing = false }: ChangeOptions,
 ): EditorState {
-  const { document, inverse } = applyOperations(state.present, [operation]);
+  const { document, inverse } = applyOperations(state.present, operations);
 
   if (!inverse.length) {
     return state;
@@ -120,21 +122,25 @@ function change(
 
   if (
     continuing &&
+    operations.length === 1 &&
     previous &&
     last?.operations === previous.operations &&
     state.pending.length > state.sealed
   ) {
-    const operations = coalesce(previous.operations, operation);
+    const merged = coalesce(previous.operations, operations[0]);
 
-    if (operations) {
+    if (merged) {
       return withPresent(
         {
           ...state,
-          pending: [...state.pending.slice(0, -1), { id: last.id, operations }],
+          pending: [
+            ...state.pending.slice(0, -1),
+            { id: last.id, operations: merged },
+          ],
           // The earlier inverse already restores the text from before focus.
           undoStack: [
             ...state.undoStack.slice(0, -1),
-            { operations, inverse: previous.inverse },
+            { operations: merged, inverse: previous.inverse },
           ],
           redoStack: [],
         },
@@ -142,8 +148,6 @@ function change(
       );
     }
   }
-
-  const operations = [operation];
 
   return withPresent(
     {
@@ -266,7 +270,10 @@ export function editorReducer(
     case "sync/pull":
       return pull(state, action.rows);
 
+    case "change":
+      return change(state, action.operations, options);
+
     default:
-      return change(state, action, options);
+      return change(state, [action], options);
   }
 }

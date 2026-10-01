@@ -70,6 +70,7 @@ test("replaying the log from the opening snapshot rebuilds the concept", () => {
     { type: "relationship/update", id: "r", field: "type", value: "enables" },
     { type: "component/tag", id: "a", tag: "goal" },
     { type: "component/move", id: "b", position: { x: 40, y: 80 } },
+    { type: "component/resize", id: "b", width: 280, height: 120 },
     {
       type: "component/format",
       id: "a",

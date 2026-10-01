@@ -18,6 +18,8 @@ insert into public.operations (branch_id, seq, change_id, position, operation) v
    '{"type": "component/move", "id": "a", "position": {"x": 1, "y": 2}}'),
   ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 100, '99999999-9999-4999-8999-999999999999', 1,
    '{"type": "component/update", "id": "a", "field": "title", "value": "Goal"}'),
+  ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 100, '99999999-9999-4999-8999-999999999999', 2,
+   '{"type": "component/resize", "id": "a", "width": 280}'),
   ('ffffffff-ffff-4fff-8fff-ffffffffffff', 100, gen_random_uuid(), 0,
    '{"type": "concept/update", "field": "title", "value": "Alternative Title"}'),
   ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 100, gen_random_uuid(), 0,
@@ -34,6 +36,7 @@ select results_eq(
       ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'::uuid, 1::bigint),
       ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'::uuid, 2::bigint),
       ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'::uuid, 3::bigint),
+      ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'::uuid, 4::bigint),
       ('ffffffff-ffff-4fff-8fff-ffffffffffff'::uuid, 1::bigint)$$,
   'The server numbers each branch''s operations in order, ignoring client values'
 );
@@ -42,7 +45,7 @@ select results_eq(
   $$select head from public.branches
     where concept_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
     order by id$$,
-  $$values (3::bigint), (1::bigint)$$,
+  $$values (4::bigint), (1::bigint)$$,
   'Each branch head points at its latest operation'
 );
 
@@ -52,8 +55,9 @@ select results_eq(
   $$values
       ('component/move', true),
       ('component/update', false),
+      ('component/resize', true),
       ('concept/update', false)$$,
-  'Position and formatting operations are marked as layout'
+  'Position, size and formatting operations are marked as layout'
 );
 
 select results_eq(

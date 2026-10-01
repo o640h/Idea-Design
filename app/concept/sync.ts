@@ -45,6 +45,7 @@ export interface SessionConcept {
   branches: SessionBranch[] | null;
 }
 
+/** Saving only while changes are on their way to the server. */
 export type SaveStatus = "saved" | "saving" | "failed";
 
 /** Applies an editor action to each opened concept's Main branch. */
@@ -213,7 +214,6 @@ export function useSync(
     }
 
     if (wrote) {
-      setStatus("saving");
       window.clearTimeout(timer.current);
       timer.current = window.setTimeout(sync, SAVE_DELAY_MS);
     }
@@ -248,7 +248,6 @@ export function useSync(
     /** Queues a write that is not an editor change, and sends it soon. */
     enqueue(entry: outbox.OutboxEntry) {
       void outbox.put(entry);
-      setStatus("saving");
       window.clearTimeout(timer.current);
       timer.current = window.setTimeout(sync, SAVE_DELAY_MS);
     },

@@ -1,5 +1,3 @@
-export const CURRENT_WORKSPACE_DOCUMENT_VERSION = 1 as const;
-
 /** Offered when tagging a component; users can also write their own tag. */
 export const SUGGESTED_TAGS = [
   "goal",
@@ -64,6 +62,10 @@ export interface ComponentLayout {
   componentId: ComponentId;
   x: number;
   y: number;
+  /** A width set by resizing; without one the block fits its text. */
+  width?: number;
+  /** A minimum height set by resizing; the block still grows with its text. */
+  height?: number;
   formats: Record<ComponentTextField, TextFormat>;
 }
 
@@ -83,22 +85,6 @@ export interface ConceptViewport {
   y: number;
   zoom: number;
 }
-
-export interface ConceptLayout {
-  conceptId: ConceptId;
-  components: ComponentLayout[];
-  viewport: ConceptViewport;
-}
-
-export interface WorkspaceDocumentV1 {
-  schemaVersion: typeof CURRENT_WORKSPACE_DOCUMENT_VERSION;
-  workspace: Workspace;
-  concepts: Concept[];
-  layouts: ConceptLayout[];
-}
-
-/** Add future document versions to this union after defining their migration. */
-export type WorkspaceDocument = WorkspaceDocumentV1;
 
 export function createComponent(id: ComponentId): ConceptComponent {
   return { id, title: "", description: "", tag: null, parentId: null };

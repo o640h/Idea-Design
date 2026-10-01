@@ -98,9 +98,12 @@ function CanvasContent({
           id: component.id,
           type: "block",
           position: { x: layout.x, y: layout.y },
+          width: layout.width,
           data: {
             component,
             formats: layout.formats,
+            fixedWidth: layout.width !== undefined,
+            minHeight: layout.height,
             editing: component.id === editingId,
             draft: false,
           },
@@ -121,6 +124,7 @@ function CanvasContent({
       data: {
         component: createComponent(draft.id),
         formats: DEFAULT_TEXT_FORMATS,
+        fixedWidth: false,
         editing: true,
         draft: true,
       },
@@ -418,6 +422,21 @@ function CanvasContent({
                       label: "Edit Text",
                       onSelect: () => setEditingId(node.id),
                     },
+                    ...(node.data.fixedWidth ||
+                    node.data.minHeight !== undefined
+                      ? [
+                          {
+                            label: "Fit to Text",
+                            onSelect: () =>
+                              dispatch({
+                                type: "component/resize",
+                                id: node.id,
+                                width: null,
+                                height: null,
+                              }),
+                          },
+                        ]
+                      : []),
                     {
                       label: "Delete",
                       onSelect: () =>

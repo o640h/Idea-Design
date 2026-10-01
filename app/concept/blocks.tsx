@@ -9,6 +9,7 @@ import {
   Handle,
   type Node,
   type NodeProps,
+  NodeResizeControl,
   NodeToolbar,
   Position,
 } from "@xyflow/react";
@@ -47,6 +48,9 @@ export type BlockNodeType = Node<
   {
     component: ConceptComponent;
     formats: ComponentLayout["formats"];
+    /** Set by resizing; otherwise the block fits its text. */
+    fixedWidth: boolean;
+    minHeight?: number;
     editing: boolean;
     /** Not yet added to the concept; it becomes a component once it has text. */
     draft: boolean;
@@ -319,7 +323,7 @@ function FormatBar({
 
 export const BlockNode = memo(function BlockNode({
   id,
-  data: { component, formats, editing, draft },
+  data: { component, formats, fixedWidth, minHeight, editing, draft },
   selected,
   dragging,
   width,
@@ -327,6 +331,7 @@ export const BlockNode = memo(function BlockNode({
   const { dispatch } = useCanvasActions();
   const [field, setField] = useState<ComponentTextField>("title");
   const [preview, setPreview] = useState<Partial<TextFormat> | null>(null);
+  const [resizing, setResizing] = useState(false);
   const shownFormats =
     preview === null
       ? formats
@@ -335,8 +340,28 @@ export const BlockNode = memo(function BlockNode({
   return (
     <div
       className={`concept-block writing-underline${selected ? " is-selected" : ""}`}
-      style={{ fontSize: shownFormats.title.fontSize }}
+      data-fixed-width={fixedWidth || resizing || undefined}
+      data-resizing={resizing || undefined}
+      style={{ fontSize: shownFormats.title.fontSize, minHeight }}
     >
+      {(selected || editing) && !draft && !dragging && (
+        <NodeResizeControl
+          position="bottom-right"
+          minWidth={96}
+          minHeight={36}
+          className="block-resize nodrag"
+          onResizeStart={() => setResizing(true)}
+          onResizeEnd={(_, { width, height }) => {
+            setResizing(false);
+            dispatch({
+              type: "component/resize",
+              id,
+              width: Math.round(width),
+              height: Math.round(height),
+            });
+          }}
+        ></NodeResizeControl>
+      )}
       <Handle
         id="left"
         type="source"

@@ -71,7 +71,7 @@ export default function BottomBar({
           <button
             type="button"
             onClick={onAdd}
-            className="flex h-5 items-center gap-1.5 rounded-md bg-[var(--surface-control)] px-2 text-[9px] font-medium text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-primary)]"
+            className="flex h-5 items-center gap-1.5 rounded-md bg-[var(--surface-control)] px-2 text-[9px] font-medium text-[var(--text-tertiary)] transition-[color,background-color,translate,scale,box-shadow] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-[var(--surface-active)] hover:text-[var(--text-primary)] motion-safe:hover:-translate-y-px motion-safe:hover:shadow-[0_3px_8px_rgb(0_0_0/0.35)] motion-safe:active:translate-y-0 motion-safe:active:scale-[0.96] motion-safe:active:shadow-none motion-safe:active:duration-75"
           >
             <Plus aria-hidden="true" size={8} strokeWidth={1.5} />
             Add

@@ -39,6 +39,13 @@ export type Operation =
       id: ComponentId;
       position: Pick<ComponentLayout, "x" | "y">;
     }
+  /** A null width or height returns that dimension to fitting the text. */
+  | {
+      type: "component/resize";
+      id: ComponentId;
+      width: number | null;
+      height: number | null;
+    }
   | {
       type: "component/format";
       id: ComponentId;
@@ -205,6 +212,30 @@ export function applyOperation(
       return {
         document: replaceLayout(document, { ...layout, x, y }),
         inverse: [{ ...operation, position: { x: layout.x, y: layout.y } }],
+      };
+    }
+
+    case "component/resize": {
+      const layout = componentLayouts.find(
+        ({ componentId }) => componentId === operation.id,
+      );
+      const width = layout?.width ?? null;
+      const height = layout?.height ?? null;
+
+      if (
+        !layout ||
+        (width === operation.width && height === operation.height)
+      ) {
+        return unchanged;
+      }
+
+      return {
+        document: replaceLayout(document, {
+          ...layout,
+          width: operation.width ?? undefined,
+          height: operation.height ?? undefined,
+        }),
+        inverse: [{ ...operation, width, height }],
       };
     }
 
