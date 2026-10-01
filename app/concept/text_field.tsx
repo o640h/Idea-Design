@@ -1,35 +1,63 @@
 "use client";
 
-import { type ComponentProps, type KeyboardEvent, useState } from "react";
+import {
+  type ComponentProps,
+  type KeyboardEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { flushSync } from "react-dom";
+
+const TYPING_PAUSE_MS = 400;
 
 interface TextFieldProps
   extends Omit<ComponentProps<"textarea">, "value" | "defaultValue"> {
   value: string;
-  onCommit: (value: string) => void;
+  /** `continuing` is true for each commit after the first during one focus. */
+  onCommit: (value: string, continuing: boolean) => void;
   /** Enter commits instead of inserting a line break. */
   singleLine?: boolean;
+  /** Also commits after a pause in typing, so unfinished text is saved. */
+  commitWhileTyping?: boolean;
 }
 
 /**
- * An auto-growing text area that edits a local draft and commits once on blur,
- * so each edit becomes a single undo step.
+ * An auto-growing text area that edits a local draft and commits it on blur,
+ * and optionally while typing. Callers can merge the commits from one focus
+ * into a single undo step.
  */
 export function TextField({
   value,
   onCommit,
   singleLine,
+  commitWhileTyping,
   className,
   style,
+  onFocus,
   onBlur,
   onKeyDown,
   ...props
 }: TextFieldProps) {
   const [draft, setDraft] = useState(value);
   const [committedValue, setCommittedValue] = useState(value);
+  const pauseTimer = useRef<number>(undefined);
+  const committedSinceFocus = useRef(false);
 
   if (value !== committedValue) {
     setCommittedValue(value);
     setDraft(value);
+  }
+
+  useEffect(() => () => window.clearTimeout(pauseTimer.current), []);
+
+  function commit(next: string) {
+    window.clearTimeout(pauseTimer.current);
+
+    if (next !== value) {
+      onCommit(next, committedSinceFocus.current);
+      committedSinceFocus.current = true;
+    }
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -59,11 +87,26 @@ export function TextField({
         rows={1}
         cols={1}
         value={draft}
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={(event) => {
-          if (draft !== value) {
-            onCommit(draft);
+        onChange={(event) => {
+          const next = event.target.value;
+          setDraft(next);
+
+          if (commitWhileTyping) {
+            window.clearTimeout(pauseTimer.current);
+            // Rendering the commit at once stops a keystroke landing before
+            // the committed value comes back and replaces the newer draft.
+            pauseTimer.current = window.setTimeout(
+              () => flushSync(() => commit(next)),
+              TYPING_PAUSE_MS,
+            );
           }
+        }}
+        onFocus={(event) => {
+          committedSinceFocus.current = false;
+          onFocus?.(event);
+        }}
+        onBlur={(event) => {
+          commit(draft);
           onBlur?.(event);
         }}
         onKeyDown={handleKeyDown}

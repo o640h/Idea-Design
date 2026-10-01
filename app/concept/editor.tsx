@@ -11,6 +11,7 @@ import {
 import Image from "next/image";
 import { useCallback, useState } from "react";
 import {
+  type ChangeOptions,
   createEditorState,
   type EditorAction,
   type EditorState,
@@ -129,13 +130,21 @@ export default function ConceptEditor() {
   const activeTitle = activeEditor.present.concept.title || "Untitled Concept";
 
   const dispatchTo = useCallback(
-    (id: ConceptId, action: EditorAction, branchId?: string) =>
+    (
+      id: ConceptId,
+      action: EditorAction,
+      branchId?: string,
+      options?: ChangeOptions,
+    ) =>
       setConcepts((current) =>
         updateConcept(current, id, (concept) => ({
           ...concept,
           branches: concept.branches.map((branch) =>
             !branchId || branch.id === branchId
-              ? { ...branch, editor: editorReducer(branch.editor, action) }
+              ? {
+                  ...branch,
+                  editor: editorReducer(branch.editor, action, options),
+                }
               : branch,
           ),
         })),
@@ -143,7 +152,8 @@ export default function ConceptEditor() {
     [],
   );
   const dispatch = useCallback(
-    (action: EditorAction) => dispatchTo(activeId, action, activeBranch.id),
+    (action: EditorAction, options?: ChangeOptions) =>
+      dispatchTo(activeId, action, activeBranch.id, options),
     [dispatchTo, activeId, activeBranch.id],
   );
 
@@ -288,7 +298,11 @@ export default function ConceptEditor() {
                 onCreate={createConcept}
                 onCreateBranch={createBranch}
                 onRename={(id, title) =>
-                  dispatchTo(id, { type: "concept/update", changes: { title } })
+                  dispatchTo(id, {
+                    type: "concept/update",
+                    field: "title",
+                    value: title,
+                  })
                 }
                 onRenameBranch={renameBranch}
                 onDelete={deleteConcept}

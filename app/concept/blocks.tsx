@@ -22,7 +22,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type { EditorAction } from "@/lib/concepts/editor";
+import type { EditorDispatch } from "@/lib/concepts/editor";
 import type {
   ComponentId,
   ComponentLayout,
@@ -60,12 +60,13 @@ export type RelationshipEdgeType = Edge<
 >;
 
 interface CanvasActions {
-  dispatch: (action: EditorAction) => void;
+  dispatch: EditorDispatch;
   stopEditing: (id: ComponentId) => void;
   commitField: (
     id: ComponentId,
     field: ComponentTextField,
     value: string,
+    continuing: boolean,
   ) => void;
 }
 
@@ -136,9 +137,12 @@ function BlockEditor({
         placeholder="Type here"
         className="block-title nodrag"
         style={textStyle(formats.title)}
+        commitWhileTyping
         value={component.title}
         onFocus={() => onFocusField("title")}
-        onCommit={(value) => commitField(component.id, "title", value)}
+        onCommit={(value, continuing) =>
+          commitField(component.id, "title", value, continuing)
+        }
         onKeyDown={(event) => {
           if (event.key === "Enter" && !event.shiftKey) {
             event.preventDefault();
@@ -152,9 +156,12 @@ function BlockEditor({
         placeholder="Add detail"
         className="block-description nodrag"
         style={textStyle(formats.description)}
+        commitWhileTyping
         value={component.description}
         onFocus={() => onFocusField("description")}
-        onCommit={(value) => commitField(component.id, "description", value)}
+        onCommit={(value, continuing) =>
+          commitField(component.id, "description", value, continuing)
+        }
       />
     </fieldset>
   );
@@ -384,9 +391,7 @@ export const BlockNode = memo(function BlockNode({
             dispatch({ type: "component/format", id, field, changes })
           }
           onPreview={setPreview}
-          onTagChange={(tag) =>
-            dispatch({ type: "component/update", id, changes: { tag } })
-          }
+          onTagChange={(tag) => dispatch({ type: "component/tag", id, tag })}
         />
       </NodeToolbar>
     </div>
@@ -439,7 +444,8 @@ export function RelationshipEdge({
                   dispatch({
                     type: "relationship/update",
                     id,
-                    changes: { type: value.trim() || null },
+                    field: "type",
+                    value: value.trim() || null,
                   })
                 }
               />

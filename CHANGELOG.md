@@ -25,3 +25,6 @@ Notable changes to Idea Design are recorded here.
 - Keep text underlines visible, centre rail icons, align the panel toolbar,
   contain tree connectors and toggle between compact and expanded concepts.
 - Rename projects to workspaces in the concept model and database.
+- Record edits as typed operations in a log, and undo and redo by appending
+  inverse operations.
+- Save text after a pause in typing, keeping one undo step per edit.

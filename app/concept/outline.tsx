@@ -2,19 +2,21 @@
 
 import { ArrowRight, Plus } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import type { EditableConcept, EditorAction } from "@/lib/concepts/editor";
+import type { EditorDispatch } from "@/lib/concepts/editor";
 import {
   type ComponentId,
   type ConceptComponent,
   type ConceptRelationship,
   createComponent,
+  createComponentLayout,
+  type EditableConcept,
 } from "@/lib/concepts/model";
 import TagMenu from "./tag_menu";
 import { TextField } from "./text_field";
 
 interface ConceptOutlineProps {
   editable: EditableConcept;
-  dispatch: (action: EditorAction) => void;
+  dispatch: EditorDispatch;
   header: ReactNode;
 }
 
@@ -44,9 +46,9 @@ export default function ConceptOutline({
       : { x: 0, y: 0 };
 
     dispatch({
-      type: "component/add",
+      type: "component/create",
       component: createComponent(id),
-      position,
+      layout: createComponentLayout(id, position),
     });
     setNewComponentId(id);
   }
@@ -61,9 +63,13 @@ export default function ConceptOutline({
         aria-label="Concept Description"
         placeholder="Describe the idea"
         className="mt-3 max-w-xl text-[11.5px] leading-4 text-[var(--text-secondary)]"
+        commitWhileTyping
         value={concept.description}
-        onCommit={(description) =>
-          dispatch({ type: "concept/update", changes: { description } })
+        onCommit={(value, continuing) =>
+          dispatch(
+            { type: "concept/update", field: "description", value },
+            { continuing },
+          )
         }
       />
 
@@ -106,7 +112,7 @@ function OutlineItem({
   component: ConceptComponent;
   outgoing: ConceptRelationship[];
   titles: Map<ComponentId, string>;
-  dispatch: (action: EditorAction) => void;
+  dispatch: EditorDispatch;
   focusOnMount: boolean;
 }) {
   const titleRef = useRef<HTMLTextAreaElement>(null);
@@ -132,18 +138,14 @@ function OutlineItem({
           tag={component.tag}
           triggerClassName="menu-item"
           onChange={(tag) =>
-            dispatch({
-              type: "component/update",
-              id: component.id,
-              changes: { tag },
-            })
+            dispatch({ type: "component/tag", id: component.id, tag })
           }
         />
         <button
           type="button"
           className="menu-item ml-auto"
           onClick={() =>
-            dispatch({ type: "component/remove", id: component.id })
+            dispatch({ type: "component/delete", id: component.id })
           }
         >
           Remove
@@ -156,26 +158,36 @@ function OutlineItem({
         aria-label="Title"
         placeholder="Untitled"
         className="text-[13px] leading-[17px] text-[var(--text-primary)]"
+        commitWhileTyping
         value={component.title}
-        onCommit={(title) =>
-          dispatch({
-            type: "component/update",
-            id: component.id,
-            changes: { title },
-          })
+        onCommit={(value, continuing) =>
+          dispatch(
+            {
+              type: "component/update",
+              id: component.id,
+              field: "title",
+              value,
+            },
+            { continuing },
+          )
         }
       />
       <TextField
         aria-label="Description"
         placeholder="Add detail"
         className="text-[10.5px] leading-[14px] text-[var(--text-secondary)]"
+        commitWhileTyping
         value={component.description}
-        onCommit={(description) =>
-          dispatch({
-            type: "component/update",
-            id: component.id,
-            changes: { description },
-          })
+        onCommit={(value, continuing) =>
+          dispatch(
+            {
+              type: "component/update",
+              id: component.id,
+              field: "description",
+              value,
+            },
+            { continuing },
+          )
         }
       />
 
@@ -202,7 +214,8 @@ function OutlineItem({
                   dispatch({
                     type: "relationship/update",
                     id: relationship.id,
-                    changes: { type: value.trim() || null },
+                    field: "type",
+                    value: value.trim() || null,
                   })
                 }
               />
@@ -210,7 +223,7 @@ function OutlineItem({
                 type="button"
                 className="menu-item ml-auto"
                 onClick={() =>
-                  dispatch({ type: "relationship/remove", id: relationship.id })
+                  dispatch({ type: "relationship/unlink", id: relationship.id })
                 }
               >
                 Remove Connection
@@ -226,7 +239,7 @@ function OutlineItem({
           value=""
           onChange={(event) =>
             dispatch({
-              type: "relationship/add",
+              type: "relationship/link",
               relationship: {
                 id: crypto.randomUUID(),
                 sourceComponentId: component.id,

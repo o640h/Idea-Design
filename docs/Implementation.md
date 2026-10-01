@@ -107,14 +107,14 @@ Do this before adding more editor features: every later phase depends on the
 operation log, and retrofitting it gets harder with each feature built on the
 current session state.
 
-- [ ] Record edits as typed operations in an append-only log: create, update
+- [x] Record edits as typed operations in an append-only log: create, update
   field, move, link, unlink, tag and delete. Coalesce continuous text edits
   into one operation.
-- [ ] Mark position and viewport operations as layout, so later comparisons
-  and merges can ignore them.
+- [ ] Mark position and formatting operations as layout, so later comparisons
+  and merges can ignore them. Keep each person's viewport out of the log.
 - [ ] Store periodic snapshots, and open a concept from its latest snapshot
   plus the operations after it.
-- [ ] Rebuild undo and redo on the log by appending inverse operations, never
+- [x] Rebuild undo and redo on the log by appending inverse operations, never
   by removing entries.
 - [ ] Queue unsent operations in an IndexedDB outbox, flush them in order and
   show Saving, Saved and Save Failed.

@@ -72,6 +72,12 @@ export const DEFAULT_TEXT_FORMATS: ComponentLayout["formats"] = {
   description: { fontSize: 10, fontWeight: 300, opacity: 0.85, italic: false },
 };
 
+/** A concept's content and component layouts: what its operations change. */
+export interface EditableConcept {
+  concept: Concept;
+  componentLayouts: ComponentLayout[];
+}
+
 export interface ConceptViewport {
   x: number;
   y: number;
@@ -96,6 +102,13 @@ export type WorkspaceDocument = WorkspaceDocumentV1;
 
 export function createComponent(id: ComponentId): ConceptComponent {
   return { id, title: "", description: "", tag: null, parentId: null };
+}
+
+export function createComponentLayout(
+  componentId: ComponentId,
+  position: Pick<ComponentLayout, "x" | "y">,
+): ComponentLayout {
+  return { componentId, ...position, formats: DEFAULT_TEXT_FORMATS };
 }
 
 export function normaliseTag(tag: string) {

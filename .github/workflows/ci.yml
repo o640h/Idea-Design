@@ -36,6 +36,9 @@ jobs:
           pnpm exec next typegen
           pnpm exec tsc --noEmit
 
+      - name: Test
+        run: pnpm test
+
       - name: Build
         run: pnpm build
 

@@ -15,12 +15,13 @@ import "@xyflow/react/dist/base.css";
 import { ChartNoAxesGantt, Check } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ThinkingOrb } from "thinking-orbs";
-import type { EditorAction, EditorState } from "@/lib/concepts/editor";
+import type { EditorDispatch, EditorState } from "@/lib/concepts/editor";
 import {
   type ComponentId,
   type ComponentTextField,
   type Concept,
   createComponent,
+  createComponentLayout,
   DEFAULT_TEXT_FORMATS,
 } from "@/lib/concepts/model";
 import {
@@ -49,7 +50,7 @@ export interface CanvasDisplay {
 
 interface ConceptCanvasProps {
   state: EditorState;
-  dispatch: (action: EditorAction) => void;
+  dispatch: EditorDispatch;
   display: CanvasDisplay;
   onDisplayChange: (display: CanvasDisplay) => void;
 }
@@ -221,20 +222,21 @@ function CanvasContent({
         id: ComponentId,
         field: ComponentTextField,
         value: string,
+        continuing: boolean,
       ) => {
-        const changes =
-          field === "title" ? { title: value } : { description: value };
-
         if (draft?.id !== id) {
-          dispatch({ type: "component/update", id, changes });
+          dispatch(
+            { type: "component/update", id, field, value },
+            { continuing },
+          );
           return;
         }
 
         if (value.trim()) {
           dispatch({
-            type: "component/add",
-            component: { ...createComponent(id), ...changes },
-            position: draft.position,
+            type: "component/create",
+            component: { ...createComponent(id), [field]: value },
+            layout: createComponentLayout(id, draft.position),
           });
           dispatch({
             type: "selection/set",
@@ -313,8 +315,8 @@ function CanvasContent({
         event.preventDefault();
         dispatch(
           selection.kind === "component"
-            ? { type: "component/remove", id: selection.id }
-            : { type: "relationship/remove", id: selection.id },
+            ? { type: "component/delete", id: selection.id }
+            : { type: "relationship/unlink", id: selection.id },
         );
       } else if (event.key === "Escape") {
         dispatch({ type: "selection/set", selection: null });
@@ -419,7 +421,7 @@ function CanvasContent({
                     {
                       label: "Delete",
                       onSelect: () =>
-                        dispatch({ type: "component/remove", id: node.id }),
+                        dispatch({ type: "component/delete", id: node.id }),
                     },
                   ],
                 });
@@ -437,7 +439,7 @@ function CanvasContent({
                     {
                       label: "Delete",
                       onSelect: () =>
-                        dispatch({ type: "relationship/remove", id: edge.id }),
+                        dispatch({ type: "relationship/unlink", id: edge.id }),
                     },
                   ],
                 });
@@ -459,7 +461,7 @@ function CanvasContent({
               }}
               onConnect={({ source, target }) =>
                 dispatch({
-                  type: "relationship/add",
+                  type: "relationship/link",
                   relationship: {
                     id: crypto.randomUUID(),
                     sourceComponentId: source,
@@ -488,9 +490,9 @@ function CanvasContent({
                 onSubmit={(title) => {
                   const id = crypto.randomUUID();
                   dispatch({
-                    type: "component/add",
+                    type: "component/create",
                     component: { ...createComponent(id), title },
-                    position: centrePosition(),
+                    layout: createComponentLayout(id, centrePosition()),
                   });
                 }}
               />
@@ -519,8 +521,8 @@ function CanvasContent({
           onViewChange={setView}
           onAdd={() => createDraft(centrePosition())}
           onFit={fitToContent}
-          canUndo={state.past.length > 0}
-          canRedo={state.future.length > 0}
+          canUndo={state.undoStack.length > 0}
+          canRedo={state.redoStack.length > 0}
           dispatch={dispatch}
         />
 
@@ -544,7 +546,7 @@ function ConceptHeader({
   dispatch,
 }: {
   concept: Concept;
-  dispatch: (action: EditorAction) => void;
+  dispatch: EditorDispatch;
 }) {
   return (
     <header className="flex max-w-[420px] flex-col items-start">
@@ -553,9 +555,13 @@ function ConceptHeader({
         aria-label="Concept Title"
         placeholder="Untitled Concept"
         className="pointer-events-auto text-base leading-[22px] font-medium text-[var(--text-primary)]"
+        commitWhileTyping
         value={concept.title}
-        onCommit={(title) =>
-          dispatch({ type: "concept/update", changes: { title } })
+        onCommit={(value, continuing) =>
+          dispatch(
+            { type: "concept/update", field: "title", value },
+            { continuing },
+          )
         }
       />
       <p className="mt-1 text-[10.5px] text-[var(--text-tertiary)]">

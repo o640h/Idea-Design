@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "biome check",
+    "test": "vitest run",
     "format": "biome format --write"
   },
   "dependencies": {
@@ -20,12 +21,13 @@
   "devDependencies": {
     "@biomejs/biome": "2.4.2",
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
+    "@types/node": "^24.19.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "supabase": "^2.118.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^5.0.2"
   },
   "packageManager": "pnpm@12.6.0"
 }

@@ -1,82 +1,60 @@
-import {
-  type ComponentId,
-  type ComponentLayout,
-  type ComponentTextField,
-  type Concept,
-  type ConceptComponent,
-  type ConceptLayout,
-  type ConceptRelationship,
-  type ConceptViewport,
-  DEFAULT_TEXT_FORMATS,
-  type RelationshipId,
-  type TextFormat,
+import type {
+  ComponentId,
+  ConceptLayout,
+  ConceptViewport,
+  EditableConcept,
+  RelationshipId,
 } from "./model";
+import { applyOperations, coalesce, type Operation } from "./operations";
 
 export type EditorSelection =
   | { kind: "component"; id: ComponentId }
   | { kind: "relationship"; id: RelationshipId }
   | null;
 
-export interface EditableConcept {
-  concept: Concept;
-  componentLayouts: ComponentLayout[];
+/** A change and the operations that revert it. */
+interface HistoryEntry {
+  operations: Operation[];
+  inverse: Operation[];
 }
 
 export interface EditorState {
-  past: EditableConcept[];
   present: EditableConcept;
-  future: EditableConcept[];
+  /** Each change made this session, in order. Undo and redo append to it. */
+  log: Operation[][];
+  undoStack: HistoryEntry[];
+  redoStack: HistoryEntry[];
+  /** Each person's own view, so it is kept out of the log. */
   viewport: ConceptViewport;
   selection: EditorSelection;
 }
 
-type Position = Pick<ComponentLayout, "x" | "y">;
-
 export type EditorAction =
-  | {
-      type: "concept/update";
-      changes: Partial<Pick<Concept, "title" | "description">>;
-    }
-  | {
-      type: "component/add";
-      component: ConceptComponent;
-      position: Position;
-    }
-  | {
-      type: "component/update";
-      id: ComponentId;
-      changes: Partial<
-        Pick<ConceptComponent, "title" | "description" | "tag" | "parentId">
-      >;
-    }
-  | { type: "component/remove"; id: ComponentId }
-  | { type: "component/move"; id: ComponentId; position: Position }
-  | {
-      type: "component/format";
-      id: ComponentId;
-      field: ComponentTextField;
-      changes: Partial<TextFormat>;
-    }
-  | { type: "relationship/add"; relationship: ConceptRelationship }
-  | {
-      type: "relationship/update";
-      id: RelationshipId;
-      changes: Pick<ConceptRelationship, "type">;
-    }
-  | { type: "relationship/remove"; id: RelationshipId }
+  | Operation
   | { type: "viewport/set"; viewport: ConceptViewport }
   | { type: "selection/set"; selection: EditorSelection }
   | { type: "history/undo" }
   | { type: "history/redo" };
 
+export interface ChangeOptions {
+  /** Merges a text edit into the previous change made during the same focus. */
+  continuing?: boolean;
+}
+
+export type EditorDispatch = (
+  action: EditorAction,
+  options?: ChangeOptions,
+) => void;
+
 export function createEditorState(
-  concept: Concept,
+  concept: EditableConcept["concept"],
   layout: ConceptLayout,
 ): EditorState {
   return {
-    past: [],
     present: { concept, componentLayouts: layout.components },
-    future: [],
+    log: [],
+    undoStack: [],
+    redoStack: [],
     viewport: layout.viewport,
     selection: null,
   };
@@ -90,294 +68,124 @@ export function getConceptLayout(state: EditorState): ConceptLayout {
   };
 }
 
-function commit(state: EditorState, present: EditableConcept): EditorState {
+/** Replaces the document, dropping a selection whose item no longer exists. */
+function withPresent(
+  state: EditorState,
+  present: EditableConcept,
+): EditorState {
+  const { selection } = state;
+  const items =
+    selection?.kind === "component"
+      ? present.concept.components
+      : present.concept.relationships;
+
   return {
     ...state,
-    past: [...state.past, state.present],
     present,
-    future: [],
+    selection:
+      selection && items.some(({ id }) => id === selection.id)
+        ? selection
+        : null,
+  };
+}
+
+function change(
+  state: EditorState,
+  operation: Operation,
+  { continuing = false }: ChangeOptions,
+): EditorState {
+  const { document, inverse } = applyOperations(state.present, [operation]);
+
+  if (!inverse.length) {
+    return state;
+  }
+
+  const previous = state.undoStack.at(-1);
+
+  if (continuing && previous && state.log.at(-1) === previous.operations) {
+    const operations = coalesce(previous.operations, operation);
+
+    if (operations) {
+      return withPresent(
+        {
+          ...state,
+          log: [...state.log.slice(0, -1), operations],
+          // The earlier inverse already restores the text from before focus.
+          undoStack: [
+            ...state.undoStack.slice(0, -1),
+            { operations, inverse: previous.inverse },
+          ],
+          redoStack: [],
+        },
+        document,
+      );
+    }
+  }
+
+  const operations = [operation];
+
+  return withPresent(
+    {
+      ...state,
+      log: [...state.log, operations],
+      undoStack: [...state.undoStack, { operations, inverse }],
+      redoStack: [],
+    },
+    document,
+  );
+}
+
+/** Appends an entry's inverse as a new change and returns what reverts it. */
+function revert(state: EditorState, entry: HistoryEntry) {
+  const { document, inverse } = applyOperations(state.present, entry.inverse);
+
+  return {
+    state: withPresent(
+      { ...state, log: [...state.log, entry.inverse] },
+      document,
+    ),
+    reverted: { operations: entry.inverse, inverse },
   };
 }
 
 function undo(state: EditorState): EditorState {
-  const previous = state.past.at(-1);
+  const entry = state.undoStack.at(-1);
 
-  if (!previous) {
+  if (!entry) {
     return state;
   }
 
+  const { state: next, reverted } = revert(state, entry);
+
   return {
-    ...state,
-    past: state.past.slice(0, -1),
-    present: previous,
-    future: [state.present, ...state.future],
-    selection: null,
+    ...next,
+    undoStack: state.undoStack.slice(0, -1),
+    redoStack: [...state.redoStack, reverted],
   };
 }
 
 function redo(state: EditorState): EditorState {
-  const [next, ...remainingFuture] = state.future;
+  const entry = state.redoStack.at(-1);
 
-  if (!next) {
+  if (!entry) {
     return state;
   }
+
+  const { state: next, reverted } = revert(state, entry);
 
   return {
-    ...state,
-    past: [...state.past, state.present],
-    present: next,
-    future: remainingFuture,
-    selection: null,
+    ...next,
+    undoStack: [...state.undoStack, reverted],
+    redoStack: state.redoStack.slice(0, -1),
   };
-}
-
-function sameFormat(a: TextFormat, b: TextFormat) {
-  return (
-    a.fontSize === b.fontSize &&
-    a.fontWeight === b.fontWeight &&
-    a.opacity === b.opacity &&
-    a.italic === b.italic
-  );
-}
-
-function updateComponentLayout(
-  state: EditorState,
-  id: ComponentId,
-  update: (layout: ComponentLayout) => ComponentLayout,
-): EditorState {
-  const layout = state.present.componentLayouts.find(
-    (candidate) => candidate.componentId === id,
-  );
-
-  if (!layout) {
-    return state;
-  }
-
-  const updatedLayout = update(layout);
-
-  if (
-    updatedLayout.x === layout.x &&
-    updatedLayout.y === layout.y &&
-    sameFormat(updatedLayout.formats.title, layout.formats.title) &&
-    sameFormat(updatedLayout.formats.description, layout.formats.description)
-  ) {
-    return state;
-  }
-
-  return commit(state, {
-    ...state.present,
-    componentLayouts: state.present.componentLayouts.map((candidate) =>
-      candidate.componentId === id ? updatedLayout : candidate,
-    ),
-  });
 }
 
 export function editorReducer(
   state: EditorState,
   action: EditorAction,
+  options: ChangeOptions = {},
 ): EditorState {
   switch (action.type) {
-    case "concept/update": {
-      const concept = { ...state.present.concept, ...action.changes };
-
-      if (
-        concept.title === state.present.concept.title &&
-        concept.description === state.present.concept.description
-      ) {
-        return state;
-      }
-
-      return commit(state, { ...state.present, concept });
-    }
-
-    case "component/add": {
-      if (
-        state.present.concept.components.some(
-          (component) => component.id === action.component.id,
-        )
-      ) {
-        return state;
-      }
-
-      return commit(state, {
-        concept: {
-          ...state.present.concept,
-          components: [...state.present.concept.components, action.component],
-        },
-        componentLayouts: [
-          ...state.present.componentLayouts,
-          {
-            componentId: action.component.id,
-            ...action.position,
-            formats: DEFAULT_TEXT_FORMATS,
-          },
-        ],
-      });
-    }
-
-    case "component/update": {
-      const component = state.present.concept.components.find(
-        (candidate) => candidate.id === action.id,
-      );
-
-      if (!component) {
-        return state;
-      }
-
-      const updatedComponent = { ...component, ...action.changes };
-
-      if (
-        updatedComponent.title === component.title &&
-        updatedComponent.description === component.description &&
-        updatedComponent.tag === component.tag &&
-        updatedComponent.parentId === component.parentId
-      ) {
-        return state;
-      }
-
-      return commit(state, {
-        ...state.present,
-        concept: {
-          ...state.present.concept,
-          components: state.present.concept.components.map((candidate) =>
-            candidate.id === action.id ? updatedComponent : candidate,
-          ),
-        },
-      });
-    }
-
-    case "component/remove": {
-      if (
-        !state.present.concept.components.some(
-          (component) => component.id === action.id,
-        )
-      ) {
-        return state;
-      }
-
-      const removedRelationshipIds = new Set(
-        state.present.concept.relationships
-          .filter(
-            (relationship) =>
-              relationship.sourceComponentId === action.id ||
-              relationship.targetComponentId === action.id,
-          )
-          .map((relationship) => relationship.id),
-      );
-      const shouldClearSelection =
-        state.selection?.id === action.id ||
-        (state.selection?.kind === "relationship" &&
-          removedRelationshipIds.has(state.selection.id));
-
-      const nextState = commit(state, {
-        concept: {
-          ...state.present.concept,
-          components: state.present.concept.components
-            .filter((component) => component.id !== action.id)
-            .map((component) =>
-              component.parentId === action.id
-                ? { ...component, parentId: null }
-                : component,
-            ),
-          relationships: state.present.concept.relationships.filter(
-            (relationship) => !removedRelationshipIds.has(relationship.id),
-          ),
-        },
-        componentLayouts: state.present.componentLayouts.filter(
-          (layout) => layout.componentId !== action.id,
-        ),
-      });
-
-      return shouldClearSelection
-        ? { ...nextState, selection: null }
-        : nextState;
-    }
-
-    case "component/move":
-      return updateComponentLayout(state, action.id, (layout) => ({
-        ...layout,
-        ...action.position,
-      }));
-
-    case "component/format":
-      return updateComponentLayout(state, action.id, (layout) => ({
-        ...layout,
-        formats: {
-          ...layout.formats,
-          [action.field]: {
-            ...layout.formats[action.field],
-            ...action.changes,
-          },
-        },
-      }));
-
-    case "relationship/add": {
-      if (
-        state.present.concept.relationships.some(
-          (relationship) => relationship.id === action.relationship.id,
-        )
-      ) {
-        return state;
-      }
-
-      return commit(state, {
-        ...state.present,
-        concept: {
-          ...state.present.concept,
-          relationships: [
-            ...state.present.concept.relationships,
-            action.relationship,
-          ],
-        },
-      });
-    }
-
-    case "relationship/update": {
-      const relationship = state.present.concept.relationships.find(
-        (candidate) => candidate.id === action.id,
-      );
-
-      if (!relationship || relationship.type === action.changes.type) {
-        return state;
-      }
-
-      return commit(state, {
-        ...state.present,
-        concept: {
-          ...state.present.concept,
-          relationships: state.present.concept.relationships.map((candidate) =>
-            candidate.id === action.id
-              ? { ...candidate, ...action.changes }
-              : candidate,
-          ),
-        },
-      });
-    }
-
-    case "relationship/remove": {
-      if (
-        !state.present.concept.relationships.some(
-          (relationship) => relationship.id === action.id,
-        )
-      ) {
-        return state;
-      }
-
-      const nextState = commit(state, {
-        ...state.present,
-        concept: {
-          ...state.present.concept,
-          relationships: state.present.concept.relationships.filter(
-            (relationship) => relationship.id !== action.id,
-          ),
-        },
-      });
-
-      return state.selection?.id === action.id
-        ? { ...nextState, selection: null }
-        : nextState;
-    }
-
     case "viewport/set":
       return { ...state, viewport: action.viewport };
 
@@ -389,5 +197,8 @@ export function editorReducer(
 
     case "history/redo":
       return redo(state);
+
+    default:
+      return change(state, action, options);
   }
 }
