@@ -110,7 +110,7 @@ current session state.
 - [x] Record edits as typed operations in an append-only log: create, update
   field, move, link, unlink, tag and delete. Coalesce continuous text edits
   into one operation.
-- [ ] Mark position and formatting operations as layout, so later comparisons
+- [x] Mark position and formatting operations as layout, so later comparisons
   and merges can ignore them. Keep each person's viewport out of the log.
 - [ ] Store periodic snapshots, and open a concept from its latest snapshot
   plus the operations after it.
@@ -122,11 +122,11 @@ current session state.
 - [ ] Let the server assign operation order. Pull remote operations on focus
   and resolve edits from other tabs or devices per component field, with the
   last write winning. Team editing in Phase 8 reuses this rule.
-- [ ] Record the author of every operation, even while all workspaces are
+- [x] Record the author of every operation, even while all workspaces are
   personal, so shared history needs no migration later.
 - [ ] Add account sign-in. Place every concept in the user's Personal
   workspace and reopen the last concept used.
-- [ ] Enforce per-user access in database policies and server endpoints,
+- [x] Enforce per-user access in database policies and server endpoints,
   written against workspace membership rather than a single owner.
 - [ ] Move deleted concepts to a recoverable Trash rather than deleting them
   immediately.

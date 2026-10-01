@@ -27,4 +27,6 @@ Notable changes to Idea Design are recorded here.
 - Rename projects to workspaces in the concept model and database.
 - Record edits as typed operations in a log, and undo and redo by appending
   inverse operations.
+- Store each branch as an append-only operation log with snapshots, give
+  access through workspace membership and keep deleted concepts in Trash.
 - Save text after a pause in typing, keeping one undo step per edit.
