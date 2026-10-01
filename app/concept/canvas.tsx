@@ -176,6 +176,17 @@ function CanvasContent({
     dispatch({ type: "selection/set", selection: null });
   }
 
+  function blockPositionAt({
+    clientX,
+    clientY,
+  }: Pick<MouseEvent, "clientX" | "clientY">) {
+    const pointer = screenToFlowPosition({ x: clientX, y: clientY });
+    return {
+      x: pointer.x - BLOCK_TEXT_OFFSET.x,
+      y: pointer.y - BLOCK_TEXT_OFFSET.y,
+    };
+  }
+
   function centrePosition() {
     const bounds = containerRef.current?.getBoundingClientRect();
     const centre = screenToFlowPosition({
@@ -433,21 +444,14 @@ function CanvasContent({
               }}
               onPaneContextMenu={(event) => {
                 event.preventDefault();
-                const pointer = screenToFlowPosition({
-                  x: event.clientX,
-                  y: event.clientY,
-                });
+                const position = blockPositionAt(event);
                 setContextMenu({
                   x: event.clientX,
                   y: event.clientY,
                   items: [
                     {
                       label: "Add Text Here",
-                      onSelect: () =>
-                        createDraft({
-                          x: pointer.x - BLOCK_TEXT_OFFSET.x,
-                          y: pointer.y - BLOCK_TEXT_OFFSET.y,
-                        }),
+                      onSelect: () => createDraft(position),
                     },
                     { label: "Fit to Content", onSelect: fitToContent },
                   ],
@@ -466,14 +470,7 @@ function CanvasContent({
               }
               onPaneClick={(event) => {
                 if (event.detail === 2) {
-                  const pointer = screenToFlowPosition({
-                    x: event.clientX,
-                    y: event.clientY,
-                  });
-                  createDraft({
-                    x: pointer.x - BLOCK_TEXT_OFFSET.x,
-                    y: pointer.y - BLOCK_TEXT_OFFSET.y,
-                  });
+                  createDraft(blockPositionAt(event));
                 } else {
                   dispatch({ type: "selection/set", selection: null });
                 }

@@ -9,13 +9,17 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { type MouseEvent, useEffect, useRef, useState } from "react";
-import type { Concept, ConceptId } from "@/lib/concepts/model";
+import type { ConceptId } from "@/lib/concepts/model";
 import ContextMenu, { type ContextMenuState } from "./context_menu";
 import { TextField } from "./text_field";
 
 interface ConceptPanelProps {
   workspaceTitle: string;
-  concepts: (Concept & { branches: { id: string; title: string }[] })[];
+  concepts: {
+    id: ConceptId;
+    title: string;
+    branches: { id: string; title: string }[];
+  }[];
   activeConceptId: ConceptId;
   activeBranchId: string;
   onSelect: (id: ConceptId, branchId: string) => void;

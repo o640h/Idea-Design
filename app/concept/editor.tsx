@@ -17,7 +17,7 @@ import {
   editorReducer,
   getConceptLayout,
 } from "@/lib/concepts/editor";
-import type { ConceptId, Project } from "@/lib/concepts/model";
+import type { ConceptId, Workspace } from "@/lib/concepts/model";
 import ConceptCanvas, { type CanvasDisplay } from "./canvas";
 import ConceptPanel from "./concept_panel";
 
@@ -60,22 +60,6 @@ const railIconProps = {
   className: "text-[var(--text-rail)]",
 } as const;
 
-function createConceptState(project: Project): EditorState {
-  const id = crypto.randomUUID();
-
-  return createEditorState(
-    {
-      id,
-      projectId: project.id,
-      title: "",
-      description: "",
-      components: [],
-      relationships: [],
-    },
-    { conceptId: id, components: [], viewport: { x: 0, y: 0, zoom: 1 } },
-  );
-}
-
 interface SessionBranch {
   id: string;
   title: string;
@@ -87,17 +71,39 @@ interface SessionConcept {
   branches: SessionBranch[];
 }
 
-function createSessionConcept(project: Project): SessionConcept {
-  const editor = createConceptState(project);
+function createSessionConcept(workspace: Workspace): SessionConcept {
+  const id = crypto.randomUUID();
+  const editor = createEditorState(
+    {
+      id,
+      workspaceId: workspace.id,
+      title: "",
+      description: "",
+      components: [],
+      relationships: [],
+    },
+    { conceptId: id, components: [], viewport: { x: 0, y: 0, zoom: 1 } },
+  );
+
   return {
-    id: editor.present.concept.id,
+    id,
     branches: [{ id: crypto.randomUUID(), title: "Main", editor }],
   };
 }
 
+function updateConcept(
+  concepts: SessionConcept[],
+  id: ConceptId,
+  update: (concept: SessionConcept) => SessionConcept,
+) {
+  return concepts.map((concept) =>
+    concept.id === id ? update(concept) : concept,
+  );
+}
+
 export default function ConceptEditor() {
   // Concepts are held in memory until saving is added.
-  const [workspace] = useState<Project>(() => ({
+  const [workspace] = useState<Workspace>(() => ({
     id: crypto.randomUUID(),
     title: "Personal",
   }));
@@ -125,21 +131,14 @@ export default function ConceptEditor() {
   const dispatchTo = useCallback(
     (id: ConceptId, action: EditorAction, branchId?: string) =>
       setConcepts((current) =>
-        current.map((concept) =>
-          concept.id === id
-            ? {
-                ...concept,
-                branches: concept.branches.map((branch) =>
-                  !branchId || branch.id === branchId
-                    ? {
-                        ...branch,
-                        editor: editorReducer(branch.editor, action),
-                      }
-                    : branch,
-                ),
-              }
-            : concept,
-        ),
+        updateConcept(current, id, (concept) => ({
+          ...concept,
+          branches: concept.branches.map((branch) =>
+            !branchId || branch.id === branchId
+              ? { ...branch, editor: editorReducer(branch.editor, action) }
+              : branch,
+          ),
+        })),
       ),
     [],
   );
@@ -170,13 +169,23 @@ export default function ConceptEditor() {
       ),
     };
     setConcepts((current) =>
-      current.map((concept) =>
-        concept.id === activeId
-          ? { ...concept, branches: [...concept.branches, branch] }
-          : concept,
-      ),
+      updateConcept(current, activeConcept.id, (concept) => ({
+        ...concept,
+        branches: [...concept.branches, branch],
+      })),
     );
-    selectBranch(activeId, branch.id);
+    selectBranch(activeConcept.id, branch.id);
+  }
+
+  function renameBranch(conceptId: ConceptId, branchId: string, title: string) {
+    setConcepts((current) =>
+      updateConcept(current, conceptId, (concept) => ({
+        ...concept,
+        branches: concept.branches.map((branch) =>
+          branch.id === branchId ? { ...branch, title } : branch,
+        ),
+      })),
+    );
   }
 
   function deleteConcept(id: ConceptId) {
@@ -188,7 +197,7 @@ export default function ConceptEditor() {
 
     setConcepts(next);
 
-    if (id === activeEditor.present.concept.id) {
+    if (id === activeConcept.id) {
       const concept = next[Math.min(index, next.length - 1)];
       selectBranch(concept.id, concept.branches[0].id);
     }
@@ -268,14 +277,12 @@ export default function ConceptEditor() {
             {panelOpen && (
               <ConceptPanel
                 workspaceTitle={workspace.title}
-                concepts={concepts.map((concept) => ({
-                  ...concept.branches[0].editor.present.concept,
-                  branches: concept.branches.map(({ id, title }) => ({
-                    id,
-                    title,
-                  })),
+                concepts={concepts.map(({ id, branches }) => ({
+                  id,
+                  title: branches[0].editor.present.concept.title,
+                  branches,
                 }))}
-                activeConceptId={activeEditor.present.concept.id}
+                activeConceptId={activeConcept.id}
                 activeBranchId={activeBranch.id}
                 onSelect={selectBranch}
                 onCreate={createConcept}
@@ -283,22 +290,7 @@ export default function ConceptEditor() {
                 onRename={(id, title) =>
                   dispatchTo(id, { type: "concept/update", changes: { title } })
                 }
-                onRenameBranch={(conceptId, branchId, title) =>
-                  setConcepts((current) =>
-                    current.map((concept) =>
-                      concept.id === conceptId
-                        ? {
-                            ...concept,
-                            branches: concept.branches.map((branch) =>
-                              branch.id === branchId
-                                ? { ...branch, title }
-                                : branch,
-                            ),
-                          }
-                        : concept,
-                    ),
-                  )
-                }
+                onRenameBranch={renameBranch}
                 onDelete={deleteConcept}
                 onClose={() => setPanelOpen(false)}
               />

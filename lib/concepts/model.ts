@@ -1,4 +1,4 @@
-export const CURRENT_PROJECT_DOCUMENT_VERSION = 1 as const;
+export const CURRENT_WORKSPACE_DOCUMENT_VERSION = 1 as const;
 
 /** Offered when tagging a component; users can also write their own tag. */
 export const SUGGESTED_TAGS = [
@@ -11,21 +11,19 @@ export const SUGGESTED_TAGS = [
   "evidence",
 ] as const;
 
-export type ProjectDocumentVersion = typeof CURRENT_PROJECT_DOCUMENT_VERSION;
-
-export type ProjectId = string;
+export type WorkspaceId = string;
 export type ConceptId = string;
 export type ComponentId = string;
 export type RelationshipId = string;
 
-export interface Project {
-  id: ProjectId;
+export interface Workspace {
+  id: WorkspaceId;
   title: string;
 }
 
 export interface Concept {
   id: ConceptId;
-  projectId: ProjectId;
+  workspaceId: WorkspaceId;
   title: string;
   description: string;
   components: ConceptComponent[];
@@ -86,15 +84,15 @@ export interface ConceptLayout {
   viewport: ConceptViewport;
 }
 
-export interface ProjectDocumentV1 {
-  schemaVersion: typeof CURRENT_PROJECT_DOCUMENT_VERSION;
-  project: Project;
+export interface WorkspaceDocumentV1 {
+  schemaVersion: typeof CURRENT_WORKSPACE_DOCUMENT_VERSION;
+  workspace: Workspace;
   concepts: Concept[];
   layouts: ConceptLayout[];
 }
 
 /** Add future document versions to this union after defining their migration. */
-export type ProjectDocument = ProjectDocumentV1;
+export type WorkspaceDocument = WorkspaceDocumentV1;
 
 export function createComponent(id: ComponentId): ConceptComponent {
   return { id, title: "", description: "", tag: null, parentId: null };

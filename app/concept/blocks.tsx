@@ -160,6 +160,64 @@ function BlockEditor({
   );
 }
 
+function percent(value: number) {
+  return `${Math.round(value * 100)}%`;
+}
+
+/** Previews each option on hover or focus and applies it on click. */
+function FormatMenu({
+  label,
+  value,
+  options,
+  onFormat,
+  onPreview,
+}: {
+  label: string;
+  value: string;
+  options: { label: string; changes: Partial<TextFormat>; selected: boolean }[];
+  onFormat: (changes: Partial<TextFormat>) => void;
+  onPreview: (format: Partial<TextFormat> | null) => void;
+}) {
+  return (
+    <Menu
+      label={`${label}, ${value}`}
+      trigger={
+        <>
+          {value}
+          <ChevronDown aria-hidden="true" size={10} />
+        </>
+      }
+      triggerClassName="format-button gap-1 tabular-nums"
+      onOpenChange={(open) => {
+        if (!open) {
+          onPreview(null);
+        }
+      }}
+    >
+      {(close) =>
+        options.map((option) => (
+          <button
+            key={option.label}
+            type="button"
+            aria-pressed={option.selected}
+            className="menu-item tabular-nums"
+            onPointerEnter={() => onPreview(option.changes)}
+            onPointerLeave={() => onPreview(null)}
+            onFocus={() => onPreview(option.changes)}
+            onBlur={() => onPreview(null)}
+            onClick={() => {
+              onFormat(option.changes);
+              close();
+            }}
+          >
+            {option.label}
+          </button>
+        ))
+      }
+    </Menu>
+  );
+}
+
 function FormatBar({
   format,
   tag,
@@ -194,80 +252,32 @@ function FormatBar({
         }
       }}
     >
-      <Menu
-        label={`Text Size, ${format.fontSize}`}
-        trigger={
-          <>
-            {format.fontSize}
-            <ChevronDown aria-hidden="true" size={10} />
-          </>
-        }
-        triggerClassName="format-button gap-1 tabular-nums"
-        onOpenChange={(open) => {
-          if (!open) {
-            onPreview(null);
-          }
-        }}
-      >
-        {(close) =>
-          FONT_SIZES.map((size) => (
-            <button
-              key={size}
-              type="button"
-              aria-pressed={size === format.fontSize}
-              className="menu-item tabular-nums"
-              onPointerEnter={() => onPreview({ fontSize: size })}
-              onPointerLeave={() => onPreview(null)}
-              onFocus={() => onPreview({ fontSize: size })}
-              onBlur={() => onPreview(null)}
-              onClick={() => {
-                onFormat({ fontSize: size });
-                close();
-              }}
-            >
-              {size}
-            </button>
-          ))
-        }
-      </Menu>
+      <FormatMenu
+        label="Text Size"
+        value={String(format.fontSize)}
+        options={FONT_SIZES.map((fontSize) => ({
+          label: String(fontSize),
+          changes: { fontSize },
+          selected: fontSize === format.fontSize,
+        }))}
+        onFormat={onFormat}
+        onPreview={onPreview}
+      />
       <span aria-hidden="true" className="format-divider" />
-      <Menu
-        label={`Font Weight, ${format.fontWeight}`}
-        trigger={
-          <>
-            {
-              FONT_WEIGHTS.find((weight) => weight.value === format.fontWeight)
-                ?.label
-            }
-            <ChevronDown aria-hidden="true" size={10} />
-          </>
+      <FormatMenu
+        label="Font Weight"
+        value={
+          FONT_WEIGHTS.find(({ value }) => value === format.fontWeight)
+            ?.label ?? ""
         }
-        triggerClassName="format-button gap-1"
-        onOpenChange={(open) => {
-          if (!open) onPreview(null);
-        }}
-      >
-        {(close) =>
-          FONT_WEIGHTS.map(({ label, value }) => (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={format.fontWeight === value}
-              className="menu-item"
-              onPointerEnter={() => onPreview({ fontWeight: value })}
-              onPointerLeave={() => onPreview(null)}
-              onFocus={() => onPreview({ fontWeight: value })}
-              onBlur={() => onPreview(null)}
-              onClick={() => {
-                onFormat({ fontWeight: value });
-                close();
-              }}
-            >
-              {label}
-            </button>
-          ))
-        }
-      </Menu>
+        options={FONT_WEIGHTS.map(({ label, value }) => ({
+          label,
+          changes: { fontWeight: value },
+          selected: value === format.fontWeight,
+        }))}
+        onFormat={onFormat}
+        onPreview={onPreview}
+      />
       <span aria-hidden="true" className="format-divider" />
       <button
         type="button"
@@ -279,40 +289,17 @@ function FormatBar({
         <Italic aria-hidden="true" size={12} strokeWidth={1.75} />
       </button>
       <span aria-hidden="true" className="format-divider" />
-      <Menu
-        label={`Text Opacity, ${Math.round(format.opacity * 100)}%`}
-        trigger={
-          <>
-            {Math.round(format.opacity * 100)}%
-            <ChevronDown aria-hidden="true" size={10} />
-          </>
-        }
-        triggerClassName="format-button gap-1 tabular-nums"
-        onOpenChange={(open) => {
-          if (!open) onPreview(null);
-        }}
-      >
-        {(close) =>
-          TEXT_OPACITIES.map((opacity) => (
-            <button
-              key={opacity}
-              type="button"
-              aria-pressed={format.opacity === opacity}
-              className="menu-item tabular-nums"
-              onPointerEnter={() => onPreview({ opacity })}
-              onPointerLeave={() => onPreview(null)}
-              onFocus={() => onPreview({ opacity })}
-              onBlur={() => onPreview(null)}
-              onClick={() => {
-                onFormat({ opacity });
-                close();
-              }}
-            >
-              {Math.round(opacity * 100)}%
-            </button>
-          ))
-        }
-      </Menu>
+      <FormatMenu
+        label="Text Opacity"
+        value={percent(format.opacity)}
+        options={TEXT_OPACITIES.map((opacity) => ({
+          label: percent(opacity),
+          changes: { opacity },
+          selected: opacity === format.opacity,
+        }))}
+        onFormat={onFormat}
+        onPreview={onPreview}
+      />
       <span aria-hidden="true" className="format-divider" />
       <TagMenu
         tag={tag}
@@ -331,9 +318,8 @@ export const BlockNode = memo(function BlockNode({
   width,
 }: NodeProps<BlockNodeType>) {
   const { dispatch } = useCanvasActions();
-  const [focusedField, setFocusedField] = useState<ComponentTextField>("title");
+  const [field, setField] = useState<ComponentTextField>("title");
   const [preview, setPreview] = useState<Partial<TextFormat> | null>(null);
-  const field = focusedField;
   const shownFormats =
     preview === null
       ? formats
@@ -364,7 +350,7 @@ export const BlockNode = memo(function BlockNode({
           component={component}
           formats={shownFormats}
           measured={Boolean(width)}
-          onFocusField={setFocusedField}
+          onFocusField={setField}
         />
       ) : (
         <>

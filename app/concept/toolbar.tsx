@@ -17,7 +17,9 @@ export function animationDuration() {
 function ToolbarButton({
   label,
   children,
-  ...props
+  disabled,
+  pressed,
+  onClick,
 }: {
   label: string;
   children: ReactNode;
@@ -29,9 +31,9 @@ function ToolbarButton({
     <button
       type="button"
       aria-label={label}
-      aria-pressed={props.pressed}
-      disabled={props.disabled}
-      onClick={props.onClick}
+      aria-pressed={pressed}
+      disabled={disabled}
+      onClick={onClick}
       className="flex h-5 items-center gap-1 rounded-sm px-1 text-[9px] font-medium text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-primary)] disabled:opacity-40 disabled:hover:text-[var(--text-tertiary)] aria-pressed:text-[var(--text-primary)]"
     >
       {children}

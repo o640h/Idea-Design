@@ -73,16 +73,9 @@ export function createEditorState(
   concept: Concept,
   layout: ConceptLayout,
 ): EditorState {
-  if (layout.conceptId !== concept.id) {
-    throw new Error("The concept and layout must have the same concept ID.");
-  }
-
   return {
     past: [],
-    present: {
-      concept,
-      componentLayouts: [...layout.components],
-    },
+    present: { concept, componentLayouts: layout.components },
     future: [],
     viewport: layout.viewport,
     selection: null,

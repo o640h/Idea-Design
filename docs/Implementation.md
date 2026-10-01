@@ -2,18 +2,46 @@
 
 Build a concept design environment for exploring alternatives without losing
 the original idea or its reasoning. Make concepts editable, comparable and
-traceable through branching, selective merging and history.
+traceable through branching, selective merging and history, for individuals
+and, above all, for teams working on the same ideas over time.
 
 Use React, TypeScript, Next.js and React Flow, with Supabase for accounts and
-PostgreSQL storage. Keep concept operations independent of the interface.
-Use IndexedDB for draft recovery and server-side AI for optional assistance.
+PostgreSQL storage. Keep concept operations independent of the interface:
+React Flow renders state derived from the operation log and never becomes the
+stored format. Use IndexedDB as the outbox for unsent operations and
+server-side AI for optional assistance.
 
 Keep the single Next.js application at the repository root, with routes in
 `app/` and static assets in `public/`. Run pnpm and Biome from that root.
+Design references live in `design/` (see `design/README.md`); product and
+interaction rules live in `CONTEXT.md`.
 
-Develop locally and use Vercel Hobby only for eligible non-commercial previews.
-Launch on Vercel Pro with Supabase Free, upgrading as usage requires. Retain
-the NAS with Cloudflare Tunnel as the alternative deployment option.
+Develop locally and deploy to Vercel: Hobby only for eligible non-commercial
+previews, Pro for the commercial launch, with Supabase. The NAS with
+Cloudflare Tunnel remains a documented fallback, not a maintained target.
+
+This plan covers all development. The **first validation point** is the end
+of Phase 3: the test in 3.4 checks whether branch and compare feel valuable in
+a first session. Keep building past it, but run that test before starting the
+AI work in Phase 6. Deferred or optional ideas are kept in Stretch Features at
+the end.
+
+## Terms
+
+- **Workspace** — ownership and sharing boundary: Personal, or a team.
+- **Concept** — the unit a user opens. Belongs to one workspace and holds its
+  branches, which is why the Concepts panel may show it like a folder.
+- **Folder** — optional grouping of concepts inside a workspace, if needed.
+- **Branch** — a line of development within a concept. Every concept has Main.
+- **Component** — a block on the canvas with a stable ID, a title, an optional
+  description and an optional tag.
+- **Relationship** — a link between components: containment or semantic.
+- **Operation** — one recorded change to a concept. The operation log is the
+  source of truth; everything else is derived from it.
+- **Revision** — a named point in a branch's log: a branch point, checkpoint
+  or accepted merge.
+
+Do not use "project" as a separate level.
 
 ## Phase 1 — Project Foundation
 
@@ -40,14 +68,15 @@ the NAS with Cloudflare Tunnel as the alternative deployment option.
 
 ### 2.1 Define the Concept Model
 
-- [x] Store projects, concepts, components and relationships with stable IDs.
+- [x] Store workspaces, concepts, components and relationships with stable IDs.
 - [x] Allow a concept to begin with a title and unstructured description.
 - [x] Give components an optional single tag, suggesting goal, principle,
   mechanism, actor, constraint, assumption and evidence alongside custom tags.
 - [x] Separate containment from dependencies and other semantic relationships.
 - [x] Store node positions, title and description formatting and viewport state
   separately from concept content.
-- [x] Version the saved document format so stored projects remain readable.
+- [x] Version the saved document format so stored workspaces remain readable.
+- [x] Replace "project" with "workspace" in the model, database and UI.
 
 ### 2.2 Build the First Editor
 
@@ -57,74 +86,259 @@ the NAS with Cloudflare Tunnel as the alternative deployment option.
 - [x] Allow users to leave components untagged and relationships unlabelled.
 - [x] Add selection, pan, zoom, fit-to-content and a text bar anchored to the
   selected component, instead of a side panel. The bar sets the tag and the
-  size, weight, opacity and italic of the title or description being edited, previewing
-  sizes, weights and opacity on hover without committing the preview.
+  size, weight, opacity and italic of the title or description being edited,
+  previewing sizes, weights and opacity on hover without committing the preview.
 - [x] Toggle component borders and tag labels from the canvas display menu.
 - [x] Add right-click menus for components, connections and the canvas, and
   create, rename and delete concepts from the Concepts panel.
 - [x] Create root concepts with the folder button and session alternatives copied
   from Main with the file button. Switch branches from the Concepts panel;
-  durable branch lineage and history remain in Phase 4.
+  durable branch lineage and history remain in Phase 3.
 - [x] Rename concepts and branches by double-clicking their names, using F2
   or choosing Rename from their context menu.
 - [x] Provide keyboard access to the same content through an outline view.
 - [x] Add session undo and redo for content edits and graph operations.
+- [x] Confirm session alternatives keep their source's component and
+  relationship IDs. Compare and Merge depend on it.
 
 ### 2.3 Save Work Safely
 
-- [ ] Record edits in an append-only operation log with periodic snapshots,
-  and open a concept by replaying it. Back undo and redo with the log.
-- [ ] Add account sign-in and private project ownership through Supabase.
-- [ ] Place every concept in a workspace, defaulting to Personal. Create and
-  rename workspaces from the Concepts panel and reopen the last concept used.
-- [ ] Enforce per-user access in database policies and server endpoints.
-- [ ] Autosave working drafts and show Saving, Saved and Save Failed states.
-- [ ] Keep recoverable local drafts in IndexedDB when a save is interrupted.
-- [ ] Detect stale writes from another tab or device before overwriting work,
-  resolving them per component field with last-write-wins.
-- [ ] Let users recover or discard a local draft after reopening the project.
-- [ ] Make deleting a saved concept recoverable rather than immediate.
+Do this before adding more editor features: every later phase depends on the
+operation log, and retrofitting it gets harder with each feature built on the
+current session state.
+
+- [ ] Record edits as typed operations in an append-only log: create, update
+  field, move, link, unlink, tag and delete. Coalesce continuous text edits
+  into one operation.
+- [ ] Mark position and viewport operations as layout, so later comparisons
+  and merges can ignore them.
+- [ ] Store periodic snapshots, and open a concept from its latest snapshot
+  plus the operations after it.
+- [ ] Rebuild undo and redo on the log by appending inverse operations, never
+  by removing entries.
+- [ ] Queue unsent operations in an IndexedDB outbox, flush them in order and
+  show Saving, Saved and Save Failed.
+- [ ] On reopen, offer to apply or discard any operations left in the outbox.
+- [ ] Let the server assign operation order. Pull remote operations on focus
+  and resolve edits from other tabs or devices per component field, with the
+  last write winning. Team editing in Phase 8 reuses this rule.
+- [ ] Record the author of every operation, even while all workspaces are
+  personal, so shared history needs no migration later.
+- [ ] Add account sign-in. Place every concept in the user's Personal
+  workspace and reopen the last concept used.
+- [ ] Enforce per-user access in database policies and server endpoints,
+  written against workspace membership rather than a single owner.
+- [ ] Move deleted concepts to a recoverable Trash rather than deleting them
+  immediately.
 - [ ] Export and import the current concept as validated, versioned JSON.
 
-### 2.4 Verify the First Complete Journey
+### 2.4 Clarify the Canvas
+
+- [ ] Render relationship kinds with distinct line styles, such as solid for
+  containment, dashed for dependency and dotted for alternative, not colour.
+- [ ] Show the current branch as the last breadcrumb segment and make it the
+  branch switcher.
+- [ ] Give rail icons tooltips naming the view and its keyboard shortcut.
+- [ ] Set a legibility floor in the shared tokens: text people need to read is
+  at least 11px and aims for 4.5:1 contrast. Keep lower contrast for hints,
+  decoration and disabled states.
+
+### 2.5 Verify the First Complete Journey
 
 - [ ] Create a concept, edit its structure, reload and continue editing.
-- [ ] Test interrupted saves, stale writes and recovery without data loss.
-- [ ] Verify one account cannot read or modify another account's projects.
+- [ ] Test interrupted saves, two open tabs and outbox recovery without
+  data loss.
+- [ ] Verify one account cannot read or modify another account's concepts.
 - [ ] Confirm importing an export preserves component IDs and relationships.
 
-## Phase 3 — Navigate Purpose and Detail
+## Phase 3 — Branch and Compare
 
-### 3.1 Add Flexible Levels of Detail
+### 3.1 Create Branches and Revisions
 
-- [ ] Nest components under a purpose or mechanism without requiring a tree
-  for every relationship in the concept.
+- [ ] Represent branches as pointers to operation-log heads, so revisions,
+  lineage, comparison and rewinding derive from the same log.
+- [ ] Make the session alternatives from 2.2 durable branches.
+- [ ] Create a revision at each branch point, named checkpoint and accepted
+  merge.
+- [ ] Branch from any revision while preserving inherited component IDs.
+- [ ] Record the source revision, parent branch and divergence point.
+- [ ] Edit a branch without modifying its parent or sibling branches.
+- [ ] Rename, switch and archive branches without deleting their history.
+
+### 3.2 Explore From a Component
+
+- [ ] Explore from a selected component as a mode, showing its branches in a
+  chip. Done keeps them; Discard or Esc drops them.
+- [ ] Change the bottom bar's tools by mode, always keeping Undo and Redo.
+- [ ] Substitute, constrain or temporarily remove a component in a branch.
+- [ ] Mark explicitly connected components that may need review with the
+  attention box, the only box shown besides selection.
+- [ ] Keep possible consequences visually distinct from changes the user has
+  made.
+- [ ] Keep the current branch and save state visible throughout editing.
+
+### 3.3 Compare Branches Side by Side
+
+- [ ] Compare components and relationships by stable ID, including changed
+  relationship types and endpoints.
+- [ ] Identify added, removed, edited and re-parented content; ignore layout
+  operations.
+- [ ] Keep the comparison deterministic. Generated summaries of what changed
+  come later (10.2) and never replace the structural diff.
+- [ ] Show before-and-after values, with unchanged content folded and
+  available on demand.
+- [ ] Compare against the divergence revision as well as the current branch.
+- [ ] Let users copy one component's version from the other branch with
+  Take This Version, as an ordinary undoable operation.
+- [ ] Test isolation and comparison after renaming, moving or removing
+  components.
+
+### 3.4 Test Branch and Compare
+
+- [ ] Build a populated example concept that shows branch and compare within
+  the first ten minutes of use.
+- [ ] Give 5–10 people one real decision each, including at least a few pairs
+  from the same team, and watch whether they branch and compare unprompted.
+- [ ] Note where they organise without improving the idea (meta-work).
+- [ ] Ask whether it let them think in a way their existing tools do not.
+- [ ] Fix what the test exposes before moving on, and record whether people
+  asked for anything beyond Take This Version when combining branches.
+
+## Phase 4 — Merge and Understand History
+
+### 4.1 Merge Selected Changes
+
+- [ ] Select components, fields and relationships to bring into the target
+  branch from the Compare view.
+- [ ] Apply them as ordinary operations in the target, recording the source
+  branch and revision as provenance.
+- [ ] When the target also changed the same field since divergence, show both
+  values and require a choice.
+- [ ] Bring required dependencies, such as a relationship's endpoints, with a
+  selected change and say so.
+- [ ] Preview the result before applying it, and reject the preview if the
+  target changed in the meantime.
+- [ ] Make each merge one undoable operation.
+- [ ] Rely on Compare to show what still differs after a partial merge,
+  rather than tracking which changes were excluded.
+- [ ] Test conflicting edits, missing dependencies and repeated partial merges.
+
+### 4.2 Navigate Lineage and History
+
+- [ ] Show branch origins, checkpoints and merge events in the Lineage view.
+- [ ] Show a chronological list of recent operations, with their authors, in
+  the History view.
+- [ ] Open past revisions read-only and compare them with current work.
+- [ ] Restore a past revision as a new revision without erasing later history.
+- [ ] Branch from a past revision to revisit a discarded direction.
+- [ ] Export and reimport a concept with its branches, revisions and lineage.
+
+### 4.3 Test the Core Interaction
+
+- [ ] Complete create, branch, change, compare and merge end to end.
+- [ ] Observe people using it on their own design problems.
+- [ ] Run the comparison from the product plan: the same kind of problem in
+  their usual tools and in Idea Design, counting materially different
+  alternatives and recovered discarded directions.
+- [ ] Remove interaction friction before adding broader features.
+
+## Phase 5 — Navigate Purpose and Detail
+
+### 5.1 Add Flexible Levels of Detail
+
+- [ ] Nest components under another component without requiring a tree for
+  every relationship.
 - [ ] Support collapsing, expanding and focusing on a component's contents.
 - [ ] Prevent containment cycles while allowing valid cross-links.
-- [ ] Split and merge components as explicit operations so component identity,
-  and therefore comparison and merging, survives the edit.
-- [ ] Preserve a visible route back to the parent concept and overview.
+- [ ] Split and merge components as explicit operations, so component
+  identity survives the edit.
+- [ ] Keep a visible route back to the parent component and the overview.
 
-### 3.2 Implement Semantic Zoom
+### 5.2 Implement Semantic Zoom
 
-- [ ] Show purpose, major alternatives and key tensions in the overview.
-- [ ] Reveal mechanisms, components and constraints at the middle level.
-- [ ] Reveal assumptions, evidence and detailed descriptions at close range.
+- [ ] Change the representation at each level, not just what is visible, so
+  semantic zoom is more than collapse and expand. Base levels on nesting,
+  never on tags, since tags are optional:
+  - Far: each top-level component stands for its nested content as a summary
+    (counts by tag, open tensions), and branches appear as divergence markers.
+  - Mid: titles, short descriptions and first-level nested components with
+    their relationships.
+  - Near: full descriptions, evidence and detail inline.
+- [ ] Provide the Far, Mid and Near rail alongside pointer and touch zoom.
 - [ ] Keep selected content and spatial landmarks stable across transitions.
-- [ ] Provide a Far, Mid and Near level rail alongside pointer and touch
-  navigation.
 - [ ] Filter components by tag from the display menu, dimming non-matching
   components rather than hiding them.
 - [ ] Respect reduced motion and preserve focus when detail changes.
 
-### 3.3 Check Navigation With Real Concepts
+### 5.3 Check Navigation With Real Concepts
 
 - [ ] Populate product and systems-design examples with meaningful content.
-- [ ] Test movement from purpose to evidence and back without losing context.
+- [ ] Test movement from purpose to detail and back without losing context.
 - [ ] Check rendering and editing with representative larger concepts.
 - [ ] Reduce clutter through progressive disclosure before adding more UI.
 
-### 3.4 Refine Canvas Interaction
+## Phase 6 — Turn Rough Thoughts Into Structure
+
+### 6.1 Propose an Editable Decomposition
+
+- [ ] Make the orb the only AI entry point. It stays dim when idle and
+  brightens when it has something to show; clicking it toggles an annotation
+  layer, and clicking it with text selected runs structure extraction.
+- [ ] Send only the selected text to a server-side model endpoint.
+- [ ] Request components and relationships in a validated format.
+- [ ] Preserve the original text and link extracted content to its passages.
+- [ ] Distinguish extracted statements from new model suggestions.
+- [ ] Store suggestions apart from components as suggested, accepted or
+  dismissed; never apply them without acceptance.
+- [ ] Present a preview where users can edit, accept or reject individual parts.
+- [ ] Apply accepted changes as one undoable operation.
+
+### 6.2 Bound Cost and Failure
+
+- [ ] Keep provider credentials server-side and require authenticated requests.
+- [ ] Limit input size, output size, request frequency and per-account usage.
+- [ ] Set a provider spending limit where supported and track request costs.
+- [ ] Validate model output before it can modify any concept.
+- [ ] Handle timeout, cancellation and invalid output without changing the
+  concept.
+- [ ] Explain what content leaves the device before the user requests analysis.
+
+### 6.3 Evaluate the Assistance
+
+- [ ] Use representative rough drafts with ambiguity and overlapping ideas.
+- [ ] Check fidelity, unsupported additions and the amount of correction needed.
+- [ ] Compare assisted decomposition with direct manual editing.
+- [ ] Confirm all core concept operations remain usable without AI.
+
+## Phase 7 — Share and Finish the Journey
+
+### 7.1 Publish Read-Only Concepts
+
+- [ ] Share an explicitly selected revision rather than a changing draft.
+- [ ] Preview exactly which content and history will be exposed.
+- [ ] Create revocable read-only links without exposing other workspace data.
+- [ ] Let visitors explore the concept without creating an account.
+- [ ] Keep unlisted shared concepts out of search indexing by default.
+
+### 7.2 Let Others Build on a Concept
+
+- [ ] Allow the owner to enable or disable forking for a shared revision.
+- [ ] Copy a permitted revision into a workspace the recipient chooses.
+- [ ] Retain attribution without granting access to the source's private history.
+- [ ] Explain that revoking a link cannot recall an existing copy or export.
+- [ ] Export a readable concept summary and selected comparison as Markdown.
+
+### 7.3 Finish the Main User Journey
+
+- [ ] Polish the example concept from 3.4 and add a clear route from rough
+  text to first concept.
+- [ ] Add the Search and Settings rail views, with clear empty and error states.
+- [ ] Decide whether Bookmarks earns a rail slot or becomes a Pinned section
+  in the Concepts panel.
+- [ ] Check keyboard use, focus, contrast and readable narrow-screen views.
+- [ ] Verify shared links and exports with a separate account and signed-out user.
+
+### 7.4 Refine Canvas Feel
 
 - [ ] Snap to the grid and to other components' edges and text baselines with
   smart guides, holding a modifier key to disable snapping.
@@ -135,196 +349,107 @@ the NAS with Cloudflare Tunnel as the alternative deployment option.
 - [ ] Format selected ranges within a component if whole-field formatting
   proves too coarse.
 
-## Phase 4 — Explore and Compare Alternatives
+## Phase 8 — Work as a Team
 
-### 4.1 Create Branches and Revisions
+Teams are the primary market: ongoing, shared concept work is where branching,
+history and merging earn repeat use. Build asynchronous collaboration first;
+live presence comes after it works.
 
-- [ ] Represent branches as pointers to operation-log heads, so revisions,
-  lineage, diffs and rewinding derive from the same log.
-- [ ] Create a revision at branching, named checkpoints and accepted merges.
-- [ ] Branch from a saved revision while preserving inherited component IDs.
-- [ ] Record the source revision, parent branch and divergence point.
-- [ ] Edit a branch without modifying its parent or sibling branches.
-- [ ] Rename, switch and archive branches without deleting their history.
+### 8.1 Share Workspaces
 
-### 4.2 Make Controlled Changes
-
-- [ ] Explore from a selected component as a mode, showing its branches in a
-  chip; Done keeps them and Discard or Esc drops them.
-- [ ] Change the bottom bar's tools by mode, always keeping undo and redo.
-- [ ] Replace a mechanism or actor within an alternative branch.
-- [ ] Add a constraint or temporarily remove a component in that branch.
-- [ ] Mark explicitly connected dependencies that may need review with the
-  attention box, the only box shown besides selection.
-- [ ] Keep possible consequences distinct from changes the user has made.
-- [ ] Make the current branch and unsaved state visible throughout editing.
-
-### 4.3 Compare Concept Versions
-
-- [ ] Compare components and relationships by stable ID, including changed
-  relationship types and endpoints.
-- [ ] Identify added, removed and edited content; exclude layout-only changes.
-- [ ] Show before-and-after values with unchanged context available on demand.
-- [ ] Compare versions side by side from the Compare rail view with
-  per-component merge; defer overlay comparison.
-- [ ] Let users inspect both the divergence revision and current alternatives.
-- [ ] Test branching isolation and comparisons after renaming or removing nodes.
-
-## Phase 5 — Merge and Understand History
-
-### 5.1 Preview Selective Merges
-
-- [ ] Select individual components, fields and relationships to bring across.
-- [ ] Compare source and target changes against their shared base revision.
-- [ ] Flag competing edits and deletion-versus-edit conflicts for resolution.
-- [ ] Show required dependencies before including or excluding related content.
-- [ ] Preview the resulting concept without changing the working draft.
-
-### 5.2 Apply Merges Safely
-
-- [ ] Resolve conflicts explicitly and preserve unselected target content.
-- [ ] Validate references and containment before accepting the result.
-- [ ] Save the result and merge provenance in one authorised transaction.
-- [ ] Reject a stale preview if the target changed before acceptance.
-- [ ] Record the source revision and selected changes for partial merges.
-- [ ] Ensure a later merge does not treat previously excluded changes as merged.
-- [ ] Test conflicting edits, missing dependencies and repeated partial merges.
-
-### 5.3 Navigate Concept Lineage
-
-- [ ] Show branch origins, saved checkpoints and merge events in the Lineage
-  and History rail views.
-- [ ] Open historical revisions read-only and compare them with current work.
-- [ ] Restore a prior revision as a new revision without erasing later history.
-- [ ] Branch from a historical revision to revisit a discarded direction.
-- [ ] Export and reimport a project with its branches, revisions and lineage.
-
-### 5.4 Verify the Core Interaction
-
-- [ ] Complete create, branch, change, compare and selectively merge end to end.
-- [ ] Observe people using the interaction on their own design problems.
-- [ ] Check whether they can explain what changed and recover rejected ideas.
-- [ ] Remove interaction friction before adding broader concept operations.
-
-## Phase 6 — Turn Rough Thoughts Into Structure
-
-### 6.1 Propose an Editable Decomposition
-
-- [ ] Make the orb the only AI entry point. It stays dim when idle and
-  brightens when it has something to show; clicking it toggles an annotation
-  layer, and clicking it with text selected runs structure extraction.
-- [ ] Store AI tag suggestions apart from components as suggested, accepted or
-  dismissed; never apply them without acceptance.
-- [ ] Send only the selected draft text to a server-side model endpoint.
-- [ ] Request structured components and relationships in a validated format.
-- [ ] Preserve the original text and link extracted content to its passages.
-- [ ] Distinguish extracted statements from new model suggestions.
-- [ ] Present a preview where users can edit, accept or reject individual parts.
-- [ ] Apply accepted changes as one undoable operation against the current draft.
-
-### 6.2 Bound Cost and Failure
-
-- [ ] Keep provider credentials server-side and require authenticated requests.
-- [ ] Limit input size, output size, request frequency and per-account usage.
-- [ ] Set a provider spending limit where supported and track request costs.
-- [ ] Validate model output before it can modify any concept.
-- [ ] Handle timeout, cancellation and invalid output without changing the draft.
-- [ ] Explain what content leaves the device before the user requests analysis.
-
-### 6.3 Evaluate the Assistance
-
-- [ ] Use representative rough drafts with ambiguity and overlapping concepts.
-- [ ] Check fidelity, unsupported additions and the amount of correction needed.
-- [ ] Compare assisted decomposition with direct manual editing.
-- [ ] Confirm all core concept operations remain usable without AI.
-
-## Phase 7 — Share a Useful Result
-
-### 7.1 Publish Read-Only Concepts
-
-- [ ] Share an explicitly selected revision rather than a changing private draft.
-- [ ] Preview exactly which content and history will be exposed.
-- [ ] Create revocable read-only links without exposing other project data.
-- [ ] Let visitors explore the concept without creating an account.
-- [ ] Keep unlisted shared concepts out of search indexing by default.
-
-### 7.2 Let Others Build on a Concept
-
-- [ ] Allow the owner to enable or disable forking for a shared revision.
-- [ ] Copy a permitted revision into the recipient's private workspace.
-- [ ] Retain attribution without granting access to the source's private history.
-- [ ] Explain that revoking a link cannot recall an existing copy or export.
-- [ ] Export a readable concept summary and selected comparison as Markdown.
-
-### 7.3 Finish the Main User Journey
-
-- [ ] Add a populated example and a clear route from rough text to first concept.
-- [ ] Add the Search, Bookmarks and Settings rail views, with project search,
-  recent projects and clear empty and error states.
+- [ ] Create team workspaces, listed under Shared in the Concepts panel.
+- [ ] Invite members by email with Owner, Can Edit, Can Comment and Can View
+  roles, and let owners change roles and remove members.
 - [ ] Open a workspace's Home grid of concepts from its name in the Concepts
   panel.
-- [ ] Check keyboard use, focus, contrast and readable narrow-screen views.
-- [ ] Verify shared links and exports with a separate account and signed-out user.
+- [ ] Move a concept between workspaces only with an explicit confirmation,
+  since it changes who can see it.
+- [ ] Add links that allow viewing and forking the Main branch.
+- [ ] Test permission changes, removed members and invitation edge cases.
 
-## Phase 8 — Launch and Earn Repeat Use
+### 8.2 Collaborate Asynchronously
 
-### 8.1 Prepare Hosting and Recovery
+- [ ] Anchor comments to components and let them become operations.
+- [ ] Show what changed since each member last opened a concept, from the
+  History view.
+- [ ] Propose merging a branch into Main for review, with the Compare view as
+  the review surface.
+- [ ] Preserve individual authorship and revision history in shared concepts.
+
+### 8.3 Collaborate Live
+
+- [ ] Show presence only between people on the same branch, with colours
+  reserved for people and cursors matching the custom canvas cursor.
+- [ ] Show who is in which branch in the Concepts panel and let members
+  follow each other.
+- [ ] Keep per-field last-write-wins for simultaneous edits on the same branch.
+- [ ] Test reconnects, permission changes and concurrent edits before release.
+
+## Phase 9 — Launch and Earn Repeat Use
+
+### 9.1 Prepare Hosting and Recovery
 
 - [ ] Create separate development and production configuration and databases.
-- [ ] Use Vercel Pro with Supabase Free for the managed commercial launch.
-- [ ] If choosing NAS web hosting, keep Supabase for accounts and data;
-  publish only the web service through Cloudflare Tunnel.
+- [ ] Deploy on Vercel Pro with Supabase. Check the Supabase Free plan's
+  current limits, such as inactivity pausing and backups, before launching on it.
 - [ ] Connect the chosen domain with HTTPS and verify authentication redirects.
 - [ ] Monitor application failures, failed saves, database usage and AI spend.
 - [ ] Back up production data to separate encrypted storage and test a restore.
 - [ ] Verify deployment rollback and database migration recovery procedures.
 
-### 8.2 Test Product Value
+### 9.2 Test Product Value
 
-- [ ] Recruit product designers and small software teams with real decisions.
+- [ ] Recruit small product and software teams with real, ongoing decisions,
+  plus some individual designers.
 - [ ] Compare similar tasks in their current tools and Idea Design, varying order.
 - [ ] Observe time to a useful comparison, meaningful alternatives and clarity
   of reasoning rather than counting nodes or generated text.
-- [ ] Check voluntary return use over several weeks and reasons for abandoning.
-- [ ] Ask for payment after users have experienced the complete core workflow.
+- [ ] Check voluntary return use over several weeks, per team and per person,
+  and reasons for abandoning.
+- [ ] Ask for payment after teams have experienced the complete core workflow.
 
-### 8.3 Add Billing and Launch Material
+### 9.3 Add Billing and Launch Material
 
-- [ ] Define a paid offer around recurring concept work with bounded AI usage.
+- [ ] Price primarily per team workspace, with a free Personal tier that is
+  useful on its own so individuals can bring the product into their teams.
+- [ ] Bound AI usage per workspace.
 - [ ] Add hosted checkout, verified billing webhooks and server-side entitlements.
 - [ ] Make duplicate billing events harmless and support cancellation.
 - [ ] Preserve export access when a subscription ends.
-- [ ] Publish a short demonstration and a worked, explorable design example.
+- [ ] Lead with a 30-second branch, change and compare demonstration and a
+  worked, explorable design example, positioned as "Figma for Ideas".
 - [ ] Explain data handling, account deletion, pricing and support clearly.
 
-## Phase 9 — Extend Concept Exploration
+## Phase 10 — Extend Concept Exploration
 
-### 9.1 Combine and Reshape Concepts
+### 10.1 Combine and Reshape Concepts
 
 - [ ] Combine selected components from separate concepts with explicit origins.
 - [ ] Resolve duplicate identities and missing dependencies during import.
-- [ ] Abstract a mechanism into a broader goal and instantiate concrete variants.
+- [ ] Abstract a component into a broader goal and instantiate concrete variants.
 - [ ] Expose user-defined dimensions that can be locked or varied across branches.
 
-### 9.2 Add Evaluated Intelligence
+### 10.2 Add Evaluated Intelligence
 
-- [ ] Suggest relationships, tensions and change summaries with supporting context.
+- [ ] Suggest tags, relationships, tensions and change summaries with
+  supporting context, shown in the orb's annotation layer.
 - [ ] Keep deterministic differences separate from inferred consequences.
 - [ ] Make analogy suggestions inspectable as explicit structural mappings.
-- [ ] Evaluate usefulness and correction effort before adopting each capability.
-- [ ] Consider local inference only after measuring quality and device constraints.
 - [ ] Suggest arrangements without moving components until the user accepts.
+- [ ] Evaluate usefulness and correction effort before adopting each capability.
 
-### 9.3 Introduce Collaboration When Needed
+## Stretch Features
 
-- [ ] Add workspace membership with Owner, Can Edit, Can Comment and Can View
-  roles, and links that allow viewing and forking the Main branch. List shared
-  workspaces under Shared in the Concepts panel.
-- [ ] Show presence only between people on the same branch, with colours
-  reserved for people and cursors matching the custom canvas cursor.
-- [ ] Anchor comments to components and let them become operations.
-- [ ] Define simultaneous-edit conflict behaviour separately from concept
-  branching, starting with last-write-wins per field and adding a CRDT only if
-  text collisions appear.
-- [ ] Test reconnects, permission changes and concurrent edits before release.
-- [ ] Preserve individual authorship and revision history in shared projects.
+Kept for later. Revisit each only when testing or usage gives a reason.
+
+- **Overlay comparison** — draw a branch's differences directly on the canvas
+  instead of side by side.
+- **CRDT text editing** — replace per-field last-write-wins with Yjs or
+  similar, only if simultaneous text edits start colliding.
+- **Local inference** — browser or on-device models for classification,
+  tagging and similarity, after measuring quality and device constraints.
+- **Analogy browser** — a dedicated view for cross-domain structural analogies.
+- **Folders** — grouping inside workspaces, once teams hold enough concepts.
+- **Downloadable desktop app** — after the web version is established.
+- **Mobile viewing** — read-only access to shared concepts on small screens.
+- **Self-hosting** — the NAS and Cloudflare Tunnel deployment.

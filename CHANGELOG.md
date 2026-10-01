@@ -24,3 +24,4 @@ Notable changes to Idea Design are recorded here.
 - Continue the dark header divider across the canvas and round both left corners.
 - Keep text underlines visible, centre rail icons, align the panel toolbar,
   contain tree connectors and toggle between compact and expanded concepts.
+- Rename projects to workspaces in the concept model and database.
