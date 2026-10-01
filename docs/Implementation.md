@@ -14,7 +14,7 @@ server-side AI for optional assistance.
 Keep the single Next.js application at the repository root, with routes in
 `app/` and static assets in `public/`. Run pnpm and Biome from that root.
 Design references live in `design/` (see `design/README.md`); product and
-interaction rules live in `CONTEXT.md`.
+interaction rules live in `docs/CONTEXT.md`.
 
 Develop locally and deploy to Vercel: Hobby only for eligible non-commercial
 previews, Pro for the commercial launch, with Supabase. The NAS with
