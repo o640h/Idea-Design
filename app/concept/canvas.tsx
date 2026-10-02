@@ -470,13 +470,17 @@ function CanvasContent({
       } else if (event.key === "Escape") {
         dispatch({ type: "selection/set", selection: null });
       } else if (event.key === "Enter" && selection.kind === "component") {
-        // React Flow selects a focused node on Enter; only edit once selected.
+        const target =
+          event.target instanceof HTMLElement ? event.target : null;
         const focusedNodeId =
-          event.target instanceof HTMLElement
-            ? event.target.closest<HTMLElement>(".react-flow__node")?.dataset.id
-            : undefined;
+          target?.closest<HTMLElement>(".react-flow__node")?.dataset.id;
 
-        if (!focusedNodeId || focusedNodeId === selection.id) {
+        // Enter presses a focused button rather than editing the selection,
+        // and React Flow selects a focused node before it can be edited.
+        if (
+          !target?.closest("button, a[href]") &&
+          (!focusedNodeId || focusedNodeId === selection.id)
+        ) {
           event.preventDefault();
           setEditingId(selection.id);
         }
