@@ -1,6 +1,7 @@
 "use client";
 
 import { Check, ChevronDown } from "lucide-react";
+import { useState } from "react";
 import {
   type ComponentId,
   type ConceptComponent,
@@ -10,7 +11,9 @@ import {
   type EditableConcept,
 } from "@/lib/concepts/model";
 import type { Operation } from "@/lib/concepts/operations";
+import type { CanvasExploration } from "./canvas";
 import Menu from "./menu";
+import type { ConceptSession } from "./session";
 
 export type ExploreTool = "substitute" | "constrain" | "remove";
 
@@ -33,7 +36,7 @@ export const EXPLORE_TOOLS: {
 ];
 
 /** Exploring alternatives to one component, each in a branch of its own. */
-export interface Exploration {
+interface Exploration {
   conceptId: ConceptId;
   originBranchId: string;
   componentId: ComponentId;
@@ -74,7 +77,7 @@ function constraintPosition(document: EditableConcept, id: ComponentId) {
 }
 
 /** The branch a tool makes, and which component to start editing in it. */
-export function toolBranch(
+function toolBranch(
   tool: ExploreTool,
   document: EditableConcept,
   component: ConceptComponent,
@@ -126,7 +129,7 @@ export function toolBranch(
   }
 }
 
-export function ExploreChip({
+function ExploreChip({
   componentTitle,
   origin,
   branches,
@@ -216,4 +219,134 @@ export function ExploreChip({
       </button>
     </section>
   );
+}
+
+/**
+ * Exploring from a component of the open branch. Opening a branch that is
+ * neither the original nor one made while exploring keeps what was explored
+ * and stops exploring.
+ */
+export function useExploration(session: ConceptSession) {
+  const { activeConcept, activeBranch } = session;
+  const [exploration, setExploration] = useState<Exploration | null>(null);
+  /** A component a tool opened for editing, until its branch is left. */
+  const [initialEdit, setInitialEdit] = useState<{
+    branchId: string;
+    componentId: ComponentId;
+  } | null>(null);
+  const explored = exploration?.branches.find(
+    ({ id }) => id === activeBranch.id,
+  );
+  const origin = activeConcept.branches.find(
+    ({ id }) => id === exploration?.originBranchId,
+  );
+  // As it is in the original branch, which every tool starts from.
+  const component = origin?.editor?.present.concept.components.find(
+    ({ id }) => id === exploration?.componentId,
+  );
+
+  if (
+    exploration &&
+    !explored &&
+    (exploration.conceptId !== activeConcept.id ||
+      exploration.originBranchId !== activeBranch.id)
+  ) {
+    setExploration(null);
+  }
+
+  if (initialEdit && initialEdit.branchId !== activeBranch.id) {
+    setInitialEdit(null);
+  }
+
+  function explore(tool: ExploreTool) {
+    if (!exploration || !origin?.editor || !component) {
+      return;
+    }
+
+    const { title, operations, editId } = toolBranch(
+      tool,
+      origin.editor.present,
+      component,
+    );
+    const branchId = session.branchFromEditor(
+      activeConcept,
+      origin.id,
+      origin.editor,
+      { title, operations },
+    );
+
+    setExploration({
+      ...exploration,
+      branches: [
+        ...exploration.branches,
+        { id: branchId, base: origin.editor.present, reviewed: [] },
+      ],
+    });
+    setInitialEdit(editId ? { branchId, componentId: editId } : null);
+  }
+
+  /** Archives the branches made while exploring and returns to the original. */
+  function discard() {
+    if (!exploration) {
+      return;
+    }
+
+    session.setArchived(
+      exploration.conceptId,
+      exploration.branches.map(({ id }) => id),
+      true,
+    );
+    session.selectBranch(exploration.conceptId, exploration.originBranchId);
+    setExploration(null);
+  }
+
+  function markReviewed(componentId: ComponentId) {
+    if (exploration) {
+      setExploration({
+        ...exploration,
+        branches: exploration.branches.map((branch) =>
+          branch.id === activeBranch.id
+            ? { ...branch, reviewed: [...branch.reviewed, componentId] }
+            : branch,
+        ),
+      });
+    }
+  }
+
+  const canvas: CanvasExploration | null = exploration && {
+    base: explored?.base ?? null,
+    reviewed: explored?.reviewed ?? [],
+    available: Boolean(component),
+    chip: (
+      <ExploreChip
+        componentTitle={component?.title ?? ""}
+        origin={{ id: exploration.originBranchId, title: origin?.title ?? "" }}
+        branches={activeConcept.branches.filter(({ id }) =>
+          exploration.branches.some((branch) => branch.id === id),
+        )}
+        activeBranchId={activeBranch.id}
+        onSelect={(branchId) =>
+          session.selectBranch(exploration.conceptId, branchId)
+        }
+        onDiscard={discard}
+        onDone={() => setExploration(null)}
+      />
+    ),
+    onTool: explore,
+    onReviewed: markReviewed,
+    onDiscard: discard,
+  };
+
+  return {
+    canvas,
+    initialEditId: initialEdit?.componentId ?? null,
+    start(componentId: ComponentId) {
+      setExploration({
+        conceptId: activeConcept.id,
+        originBranchId: activeBranch.id,
+        componentId,
+        branches: [],
+      });
+    },
+  };
 }

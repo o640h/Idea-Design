@@ -36,6 +36,7 @@ import {
   type RelationshipEdgeType,
 } from "./blocks";
 import ContextMenu, { type ContextMenuState } from "./context_menu";
+import { historyShortcut, isTyping } from "./keyboard";
 import type { ExploreTool } from "./explore";
 import Menu from "./menu";
 import ConceptOutline from "./outline";
@@ -419,19 +420,15 @@ function CanvasContent({
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      const target = event.target instanceof HTMLElement ? event.target : null;
-
-      if (target?.closest("input, textarea, select, [contenteditable]")) {
+      if (isTyping(event.target)) {
         return;
       }
 
-      const key = event.key.toLowerCase();
+      const history = historyShortcut(event);
 
-      if ((event.metaKey || event.ctrlKey) && (key === "z" || key === "y")) {
+      if (history) {
         event.preventDefault();
-        dispatch({
-          type: key === "y" || event.shiftKey ? "history/redo" : "history/undo",
-        });
+        dispatch(history);
         return;
       }
 
@@ -451,7 +448,7 @@ function CanvasContent({
       }
 
       if (
-        key === "e" &&
+        event.key.toLowerCase() === "e" &&
         !explore &&
         selection.kind === "component" &&
         !event.metaKey &&
@@ -475,7 +472,9 @@ function CanvasContent({
       } else if (event.key === "Enter" && selection.kind === "component") {
         // React Flow selects a focused node on Enter; only edit once selected.
         const focusedNodeId =
-          target?.closest<HTMLElement>(".react-flow__node")?.dataset.id;
+          event.target instanceof HTMLElement
+            ? event.target.closest<HTMLElement>(".react-flow__node")?.dataset.id
+            : undefined;
 
         if (!focusedNodeId || focusedNodeId === selection.id) {
           event.preventDefault();

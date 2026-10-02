@@ -59,7 +59,7 @@ function HeaderButton({
   Icon: LucideIcon;
   /** Chevrons draw less ink than file icons, so they are sized up to match. */
   iconSize?: number;
-  onClick?: () => void;
+  onClick: () => void;
   expanded?: boolean;
 }) {
   return (
@@ -68,9 +68,8 @@ function HeaderButton({
       aria-label={label}
       title={label}
       aria-expanded={expanded}
-      disabled={!onClick}
       onClick={onClick}
-      className="grid h-8 w-10 place-items-center rounded-md text-(--text-rail) transition-colors duration-150 hover:bg-(--surface-raised) disabled:opacity-40 disabled:hover:bg-transparent"
+      className="grid h-8 w-10 place-items-center rounded-md text-(--text-rail) transition-colors duration-150 hover:bg-(--surface-raised)"
     >
       <Icon aria-hidden="true" size={iconSize} strokeWidth={1.5} />
     </button>

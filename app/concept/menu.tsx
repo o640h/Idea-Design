@@ -179,3 +179,11 @@ export default function Menu({
     </>
   );
 }
+
+export function MenuDivider() {
+  return <div className="my-0.5 border-t border-(--border)" />;
+}
+
+export function MenuHeading({ children }: { children: ReactNode }) {
+  return <p className="eyebrow px-2.5 pt-1.5 pb-1">{children}</p>;
+}

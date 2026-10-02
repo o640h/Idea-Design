@@ -1,6 +1,5 @@
 import type {
   ComponentId,
-  ConceptComponent,
   ConceptRelationship,
   EditableConcept,
 } from "./model";
@@ -96,7 +95,7 @@ export function compareConcepts(
 }
 
 /** How components differ from an earlier state, matched by ID. Layout is ignored. */
-export interface ComponentChanges {
+interface ComponentChanges {
   added: Set<ComponentId>;
   edited: Set<ComponentId>;
   removed: Set<ComponentId>;
@@ -139,13 +138,14 @@ export function takeVersion(
   const theirs = reference.concept.components.find((c) => c.id === id);
   const ours = current.concept.components.find((c) => c.id === id);
   const existing = new Set(current.concept.components.map((c) => c.id));
-  // Nesting under a component this branch no longer has would orphan it.
-  const parentId =
-    theirs?.parentId && existing.has(theirs.parentId) ? theirs.parentId : null;
 
   if (!theirs) {
     return [];
   }
+
+  // Nesting under a component this branch no longer has would orphan it.
+  const parentId =
+    theirs.parentId && existing.has(theirs.parentId) ? theirs.parentId : null;
 
   if (ours) {
     const operations: Operation[] = [];
@@ -179,31 +179,21 @@ export function takeVersion(
     return [];
   }
 
+  // Its connections come back where the other end is still here.
+  const connections = reference.concept.relationships.filter(
+    ({ id: relationshipId, sourceComponentId: from, targetComponentId: to }) =>
+      !linked.has(relationshipId) &&
+      ((from === id && existing.has(to)) || (to === id && existing.has(from))),
+  );
+
   return [
-    {
-      type: "component/create",
-      component: { ...theirs, parentId } satisfies ConceptComponent,
-      layout,
-    },
-    ...reference.concept.relationships
-      .filter(
-        (relationship) =>
-          !linked.has(relationship.id) &&
-          [
-            relationship.sourceComponentId,
-            relationship.targetComponentId,
-          ].includes(id) &&
-          [
-            relationship.sourceComponentId,
-            relationship.targetComponentId,
-          ].every((end) => end === id || existing.has(end)),
-      )
-      .map(
-        (relationship): Operation => ({
-          type: "relationship/link",
-          relationship,
-        }),
-      ),
+    { type: "component/create", component: { ...theirs, parentId }, layout },
+    ...connections.map(
+      (relationship): Operation => ({
+        type: "relationship/link",
+        relationship,
+      }),
+    ),
   ];
 }
 

@@ -211,9 +211,14 @@ select:not(:disabled) {
 }
 
 .menu-item:hover,
-.menu-item:focus-visible {
+.menu-item:focus-visible,
+.menu-item.is-primary {
   color: var(--text-primary);
   background: var(--surface-control);
+}
+
+.menu-item:disabled {
+  opacity: 0.4;
 }
 
 .menu-divider {

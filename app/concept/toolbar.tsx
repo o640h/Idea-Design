@@ -45,6 +45,37 @@ export function ToolbarButton({
   );
 }
 
+/** Undo and Redo, which every view's bottom bar keeps. */
+export function UndoRedo({
+  canUndo,
+  canRedo,
+  dispatch,
+}: {
+  canUndo: boolean;
+  canRedo: boolean;
+  dispatch: (action: EditorAction) => void;
+}) {
+  return (
+    <>
+      <ToolbarButton
+        label="Undo"
+        disabled={!canUndo}
+        onClick={() => dispatch({ type: "history/undo" })}
+      >
+        <Undo aria-hidden="true" size={16} strokeWidth={1.25} />
+      </ToolbarButton>
+      <span aria-hidden="true" className="menu-divider" />
+      <ToolbarButton
+        label="Redo"
+        disabled={!canRedo}
+        onClick={() => dispatch({ type: "history/redo" })}
+      >
+        <Redo aria-hidden="true" size={16} strokeWidth={1.25} />
+      </ToolbarButton>
+    </>
+  );
+}
+
 /** Canvas tools; while exploring, the explore tools replace adding and the outline. */
 export default function BottomBar({
   view,
@@ -123,21 +154,7 @@ export default function BottomBar({
         </>
       )}
 
-      <ToolbarButton
-        label="Undo"
-        disabled={!canUndo}
-        onClick={() => dispatch({ type: "history/undo" })}
-      >
-        <Undo aria-hidden="true" size={16} strokeWidth={1.25} />
-      </ToolbarButton>
-      {divider}
-      <ToolbarButton
-        label="Redo"
-        disabled={!canRedo}
-        onClick={() => dispatch({ type: "history/redo" })}
-      >
-        <Redo aria-hidden="true" size={16} strokeWidth={1.25} />
-      </ToolbarButton>
+      <UndoRedo canUndo={canUndo} canRedo={canRedo} dispatch={dispatch} />
       {divider}
 
       {view === "canvas" && (

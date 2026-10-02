@@ -1,7 +1,8 @@
 "use client";
 
-import { Check, ChevronDown, Redo, Undo } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { revisionDocument } from "@/lib/concepts/database";
 import {
   type ComponentField,
   compareConcepts,
@@ -15,17 +16,106 @@ import type {
   ConceptRelationship,
   EditableConcept,
 } from "@/lib/concepts/model";
+import { createClient } from "@/lib/supabase/client";
+import { historyShortcut, isTyping } from "./keyboard";
 import Menu from "./menu";
-import { ToolbarButton } from "./toolbar";
+import { type ConceptSession, parentBranch } from "./session";
+import { ToolbarButton, UndoRedo } from "./toolbar";
 
-export interface CompareOption {
+interface CompareOption {
   /** A branch ID, or the source revision for where the branch started. */
   id: string;
   title: string;
   note?: string;
 }
 
+/**
+ * What Compare shows on the left: another branch, or where the open branch
+ * started. It is the branch's parent until something else is chosen.
+ */
+export function useCompareReference(session: ConceptSession, open: boolean) {
+  const { activeConcept, activeBranch } = session;
+  const [chosenId, setChosenId] = useState<string | null>(null);
+  /** Documents at source revisions, which never change once saved. */
+  const [startDocuments, setStartDocuments] = useState<
+    Record<string, EditableConcept | "failed">
+  >({});
+  const parent = parentBranch(activeConcept, activeBranch);
+  const options: CompareOption[] = [
+    ...(activeBranch.sourceRevisionId
+      ? [
+          {
+            id: activeBranch.sourceRevisionId,
+            title: "Where It Started",
+            note: parent && `In ${parent.title}`,
+          },
+        ]
+      : []),
+    ...activeConcept.branches
+      .filter(({ id, archivedAt }) => id !== activeBranch.id && !archivedAt)
+      .map(({ id, title }) => ({
+        id,
+        title,
+        note: id === parent?.id ? "Parent" : undefined,
+      })),
+  ];
+  const id =
+    options.find((option) => option.id === chosenId)?.id ??
+    parent?.id ??
+    options[0]?.id ??
+    null;
+  const branch = activeConcept.branches.find(
+    (candidate) => candidate.id === id,
+  );
+  const reference = branch
+    ? (branch.editor?.present ?? null)
+    : id
+      ? (startDocuments[id] ?? null)
+      : null;
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: loading depends only on what is compared; load and sync read the latest state themselves
+  useEffect(() => {
+    if (!open || !id || reference) {
+      return;
+    }
+
+    if (branch) {
+      void session.load(activeConcept, id);
+      return;
+    }
+
+    void (async () => {
+      try {
+        // A new branch's source revision may still be on its way. Sending
+        // flushes React updates, which cannot happen during an effect.
+        await new Promise((resolve) => window.setTimeout(resolve));
+        await session.sync.flush();
+        const document = await revisionDocument(
+          createClient(),
+          id,
+          session.owner(activeConcept.id),
+        );
+        setStartDocuments((current) => ({ ...current, [id]: document }));
+      } catch (error) {
+        console.warn("Could not load where the branch started", error);
+        setStartDocuments((current) => ({ ...current, [id]: "failed" }));
+      }
+    })();
+  }, [open, id, reference]);
+
+  return {
+    options,
+    id,
+    /** Null while it loads; "failed" if it could not be loaded. */
+    reference,
+    choose: setChosenId,
+    retry: () =>
+      setStartDocuments(({ [id ?? ""]: _failed, ...loaded }) => loaded),
+  };
+}
+
 type ComponentDifference = Difference<ConceptComponent, ComponentField>;
+type UnchangedComponent = Extract<ComponentDifference, { status: "unchanged" }>;
 type RelationshipDifference = Difference<
   ConceptRelationship,
   RelationshipField
@@ -43,6 +133,9 @@ const FIELD_NAMES: Record<ComponentField | RelationshipField, string> = {
 
 const SYMBOLS = { changed: "~", added: "+", removed: "−" } as const;
 
+/** Rows of differences, in this order, under each heading. */
+const DIFFERING = ["changed", "added", "removed"] as const;
+
 function changeLabel(difference: ComponentDifference | RelationshipDifference) {
   if (difference.status !== "changed") {
     return difference.status === "unchanged" ? null : difference.status;
@@ -59,6 +152,34 @@ function changeLabel(difference: ComponentDifference | RelationshipDifference) {
 
 function pluralise(count: number, noun: string) {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+/** A side of a row. The current branch's side is marked when it differs. */
+function Card({
+  eyebrow,
+  label,
+  current,
+  children,
+}: {
+  eyebrow: string;
+  label?: string | null;
+  current?: boolean;
+  children: ReactNode;
+}) {
+  const marked = current && label;
+
+  return (
+    <div className={`compare-card${marked ? " is-changed" : ""}`}>
+      <div className="flex items-start justify-between gap-3">
+        <p className="eyebrow flex items-center gap-1.5">
+          {marked && <span aria-hidden="true" className="compare-dot" />}
+          {eyebrow}
+        </p>
+        {label && <p className="compare-label">{label}</p>}
+      </div>
+      {children}
+    </div>
+  );
 }
 
 function ComponentCard({
@@ -80,16 +201,7 @@ function ComponentCard({
     document.concept.components.find(({ id }) => id === component.parentId);
 
   return (
-    <div className={`compare-card${current && label ? " is-changed" : ""}`}>
-      <div className="flex items-start justify-between gap-3">
-        <p className="eyebrow flex items-center gap-1.5">
-          {current && label && (
-            <span aria-hidden="true" className="compare-dot" />
-          )}
-          {component.tag ?? "Untagged"}
-        </p>
-        {label && <p className="compare-label">{label}</p>}
-      </div>
+    <Card eyebrow={component.tag ?? "Untagged"} label={label} current={current}>
       <p className="mt-1 text-[13px] leading-[1.35] text-(--text-primary)">
         {component.title || "Untitled"}
       </p>
@@ -104,16 +216,7 @@ function ComponentCard({
         </p>
       )}
       {children}
-    </div>
-  );
-}
-
-function AbsentCard({ tag, branch }: { tag?: string | null; branch: string }) {
-  return (
-    <div className="compare-card is-absent">
-      <p className="eyebrow">{tag ?? "Untagged"}</p>
-      <p className="mt-1 text-small text-(--text-tertiary)">Not in {branch}</p>
-    </div>
+    </Card>
   );
 }
 
@@ -134,21 +237,25 @@ function ConnectionCard({
   };
 
   return (
-    <div className={`compare-card${current && label ? " is-changed" : ""}`}>
-      <div className="flex items-start justify-between gap-3">
-        <p className="eyebrow flex items-center gap-1.5">
-          {current && label && (
-            <span aria-hidden="true" className="compare-dot" />
-          )}
-          {relationship.type ?? "Connection"}
-        </p>
-        {label && <p className="compare-label">{label}</p>}
-      </div>
+    <Card
+      eyebrow={relationship.type ?? "Connection"}
+      label={label}
+      current={current}
+    >
       <p className="mt-1 text-[13px] leading-[1.35] text-(--text-primary)">
         {title(relationship.sourceComponentId)}
         <span className="px-1.5 text-(--text-tertiary)">→</span>
         {title(relationship.targetComponentId)}
       </p>
+    </Card>
+  );
+}
+
+function AbsentCard({ tag, branch }: { tag?: string | null; branch: string }) {
+  return (
+    <div className="compare-card is-absent">
+      <p className="eyebrow">{tag ?? "Untagged"}</p>
+      <p className="mt-1 text-small text-(--text-tertiary)">Not in {branch}</p>
     </div>
   );
 }
@@ -174,105 +281,36 @@ function Row({
   );
 }
 
-/**
- * The current branch side by side with another branch, or with where it
- * started, matched by component and connection ID. Differences describe the
- * current branch, on the right, relative to the left.
- */
-export default function CompareView({
-  currentTitle,
-  current,
-  options,
-  referenceId,
+/** The rows for a loaded comparison, with unchanged content folded. */
+function Differences({
+  comparison: { components, relationships },
   reference,
-  onReferenceChange,
-  onRetry,
-  canUndo,
-  canRedo,
+  referenceTitle,
+  current,
+  currentTitle,
   dispatch,
-  onClose,
 }: {
-  currentTitle: string;
+  comparison: ReturnType<typeof compareConcepts>;
+  reference: EditableConcept;
+  referenceTitle: string;
   current: EditableConcept;
-  options: CompareOption[];
-  referenceId: string | null;
-  /** Null while it loads; "failed" if it could not be loaded. */
-  reference: EditableConcept | "failed" | null;
-  onReferenceChange: (id: string) => void;
-  onRetry: () => void;
-  canUndo: boolean;
-  canRedo: boolean;
+  currentTitle: string;
   dispatch: EditorDispatch;
-  onClose: () => void;
 }) {
   const [showUnchanged, setShowUnchanged] = useState(false);
-  const selected = options.find(({ id }) => id === referenceId);
-  const referenceDocument =
-    reference && reference !== "failed" ? reference : null;
-  const comparison = useMemo(
-    () =>
-      referenceDocument ? compareConcepts(referenceDocument, current) : null,
-    [referenceDocument, current],
+  const unchanged = components.filter(
+    (difference): difference is UnchangedComponent =>
+      difference.status === "unchanged",
   );
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      const target = event.target instanceof HTMLElement ? event.target : null;
-
-      if (target?.closest("input, textarea, select, [contenteditable]")) {
-        return;
-      }
-
-      const key = event.key.toLowerCase();
-
-      if ((event.metaKey || event.ctrlKey) && (key === "z" || key === "y")) {
-        event.preventDefault();
-        dispatch({
-          type: key === "y" || event.shiftKey ? "history/redo" : "history/undo",
-        });
-      } else if (event.key === "Escape") {
-        onClose();
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [dispatch, onClose]);
-
-  const byStatus = <T extends { status: string }>(items: T[], status: string) =>
-    items.filter((item) => item.status === status);
-  const components = comparison?.components ?? [];
-  const relationships = comparison?.relationships ?? [];
-  const differing = [...components, ...relationships].filter(
-    ({ status }) => status !== "unchanged",
-  );
-  const unchanged = byStatus(components, "unchanged");
-  const unchangedConnections = byStatus(relationships, "unchanged").length;
-  const counts = ["changed", "added", "removed", "unchanged"].map(
-    (status) =>
-      [
-        status,
-        byStatus([...components, ...relationships], status).length,
-      ] as const,
-  );
+  const unchangedConnections = relationships.filter(
+    ({ status }) => status === "unchanged",
+  ).length;
+  const changedConnections = relationships.length - unchangedConnections;
   const tagCounts = new Map<string, number>();
 
-  for (const difference of unchanged) {
-    if (difference.status === "unchanged") {
-      const tag = difference.after.tag ?? "untagged";
-      tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
-    }
-  }
-
-  const referenceTitle = selected?.title ?? "";
-
-  function take(id: string) {
-    if (referenceDocument) {
-      dispatch({
-        type: "change",
-        operations: takeVersion(referenceDocument, current, id),
-      });
-    }
+  for (const { after } of unchanged) {
+    const tag = after.tag ?? "untagged";
+    tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
   }
 
   const takeButton = (id: string) => (
@@ -280,7 +318,12 @@ export default function CompareView({
       type="button"
       className="compare-take"
       title={`Copy this version into ${currentTitle}`}
-      onClick={() => take(id)}
+      onClick={() =>
+        dispatch({
+          type: "change",
+          operations: takeVersion(reference, current, id),
+        })
+      }
     >
       Take This Version
     </button>
@@ -289,75 +332,36 @@ export default function CompareView({
   function componentRow(difference: ComponentDifference) {
     const label = changeLabel(difference);
 
-    switch (difference.status) {
-      case "added":
-        return (
-          <Row
-            key={difference.id}
-            status="added"
-            left={
-              <AbsentCard tag={difference.after.tag} branch={referenceTitle} />
-            }
-            right={
-              <ComponentCard
-                component={difference.after}
-                document={current}
-                label={label}
-                current
-              />
-            }
-          />
-        );
-
-      case "removed":
-        return (
-          <Row
-            key={difference.id}
-            status="removed"
-            left={
-              <ComponentCard
-                component={difference.before}
-                document={referenceDocument ?? current}
-              >
-                {takeButton(difference.id)}
-              </ComponentCard>
-            }
-            right={
-              <AbsentCard tag={difference.before.tag} branch={currentTitle} />
-            }
-          />
-        );
-
-      default:
-        return (
-          <Row
-            key={difference.id}
-            status={difference.status}
-            left={
-              <ComponentCard
-                component={difference.before}
-                document={referenceDocument ?? current}
-              >
-                {difference.status === "changed" && takeButton(difference.id)}
-              </ComponentCard>
-            }
-            right={
-              <ComponentCard
-                component={difference.after}
-                document={current}
-                label={label}
-                current
-              />
-            }
-          />
-        );
-    }
+    return (
+      <Row
+        key={difference.id}
+        status={difference.status}
+        left={
+          difference.status === "added" ? (
+            <AbsentCard tag={difference.after.tag} branch={referenceTitle} />
+          ) : (
+            <ComponentCard component={difference.before} document={reference}>
+              {difference.status !== "unchanged" && takeButton(difference.id)}
+            </ComponentCard>
+          )
+        }
+        right={
+          difference.status === "removed" ? (
+            <AbsentCard tag={difference.before.tag} branch={currentTitle} />
+          ) : (
+            <ComponentCard
+              component={difference.after}
+              document={current}
+              label={label}
+              current
+            />
+          )
+        }
+      />
+    );
   }
 
   function connectionRow(difference: RelationshipDifference) {
-    const label = changeLabel(difference);
-    const document = referenceDocument ?? current;
-
     return (
       <Row
         key={difference.id}
@@ -368,7 +372,7 @@ export default function CompareView({
           ) : (
             <ConnectionCard
               relationship={difference.before}
-              document={document}
+              document={reference}
             />
           )
         }
@@ -379,7 +383,7 @@ export default function CompareView({
             <ConnectionCard
               relationship={difference.after}
               document={current}
-              label={label}
+              label={changeLabel(difference)}
               current
             />
           )
@@ -387,6 +391,143 @@ export default function CompareView({
       />
     );
   }
+
+  return (
+    <>
+      <div className="compare-row mt-8 mb-2">
+        <p className="eyebrow truncate">{referenceTitle}</p>
+        <span />
+        <p className="eyebrow truncate">{currentTitle}</p>
+      </div>
+
+      {unchanged.length + unchangedConnections > 0 && (
+        <div className="compare-fold">
+          <p className="min-w-0 truncate">
+            {pluralise(unchanged.length, "unchanged component")}
+            {tagCounts.size > 0 && (
+              <span className="text-(--text-tertiary)">
+                {"  ·  "}
+                {[...tagCounts]
+                  .map(([tag, count]) =>
+                    tag === "untagged"
+                      ? `${count} untagged`
+                      : pluralise(count, tag),
+                  )
+                  .join(", ")}
+              </span>
+            )}
+            {unchangedConnections > 0 && (
+              <span className="text-(--text-tertiary)">
+                {"  ·  "}
+                {pluralise(unchangedConnections, "connection")}
+              </span>
+            )}
+          </p>
+          {unchanged.length > 0 && (
+            <button
+              type="button"
+              aria-expanded={showUnchanged}
+              className="shrink-0 text-(--text-secondary) transition-colors hover:text-(--text-primary)"
+              onClick={() => setShowUnchanged((shown) => !shown)}
+            >
+              {showUnchanged ? "Hide" : "Show"}
+            </button>
+          )}
+        </div>
+      )}
+
+      {showUnchanged && (
+        <ul
+          aria-label="Unchanged Components"
+          className="compare-list is-unchanged"
+        >
+          {unchanged.map(componentRow)}
+        </ul>
+      )}
+
+      {unchanged.length === components.length && changedConnections === 0 ? (
+        <p className="mt-10 text-center text-ui text-(--text-tertiary)">
+          {currentTitle} matches {referenceTitle}.
+        </p>
+      ) : (
+        <>
+          <ul aria-label="Changed Components" className="compare-list">
+            {DIFFERING.flatMap((status) =>
+              components
+                .filter((difference) => difference.status === status)
+                .map(componentRow),
+            )}
+          </ul>
+          {changedConnections > 0 && (
+            <>
+              <h2 className="eyebrow mt-8 mb-2">Connections</h2>
+              <ul aria-label="Changed Connections" className="compare-list">
+                {DIFFERING.flatMap((status) =>
+                  relationships
+                    .filter((difference) => difference.status === status)
+                    .map(connectionRow),
+                )}
+              </ul>
+            </>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
+/**
+ * The current branch side by side with another branch, or with where it
+ * started, matched by component and connection ID. Differences describe the
+ * current branch, on the right, relative to the left.
+ */
+export default function CompareView({
+  currentTitle,
+  current,
+  compare,
+  canUndo,
+  canRedo,
+  dispatch,
+  onClose,
+}: {
+  currentTitle: string;
+  current: EditableConcept;
+  compare: ReturnType<typeof useCompareReference>;
+  canUndo: boolean;
+  canRedo: boolean;
+  dispatch: EditorDispatch;
+  onClose: () => void;
+}) {
+  const { options, id, reference, choose, retry } = compare;
+  const referenceTitle = options.find((option) => option.id === id)?.title;
+  const loaded = reference && reference !== "failed" ? reference : null;
+  const comparison = useMemo(
+    () => loaded && compareConcepts(loaded, current),
+    [loaded, current],
+  );
+  const differences = comparison
+    ? [...comparison.components, ...comparison.relationships]
+    : [];
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (isTyping(event.target)) {
+        return;
+      }
+
+      const history = historyShortcut(event);
+
+      if (history) {
+        event.preventDefault();
+        dispatch(history);
+      } else if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [dispatch, onClose]);
 
   return (
     <div className="compare-view relative h-full">
@@ -398,7 +539,7 @@ export default function CompareView({
                 Compare
               </h1>
               <div className="mt-3 flex items-center gap-2 text-ui">
-                {options.length > 0 && (
+                {referenceTitle && (
                   <Menu
                     label={`Compare With, ${referenceTitle}`}
                     trigger={
@@ -418,15 +559,15 @@ export default function CompareView({
                         <button
                           key={option.id}
                           type="button"
-                          aria-pressed={option.id === referenceId}
+                          aria-pressed={option.id === id}
                           className="menu-item min-w-52 justify-between gap-4"
                           onClick={() => {
-                            onReferenceChange(option.id);
+                            choose(option.id);
                             close();
                           }}
                         >
                           <span className="truncate">{option.title}</span>
-                          {option.id === referenceId ? (
+                          {option.id === id ? (
                             <Check aria-hidden="true" size={10} />
                           ) : (
                             option.note && (
@@ -449,16 +590,21 @@ export default function CompareView({
             </div>
             {comparison && (
               <ul aria-label="Summary" className="flex gap-1.5">
-                {counts.map(([status, count]) => (
+                {[...DIFFERING, "unchanged"].map((status) => (
                   <li key={status} className="compare-count">
-                    {count} {status}
+                    {
+                      differences.filter(
+                        (difference) => difference.status === status,
+                      ).length
+                    }{" "}
+                    {status}
                   </li>
                 ))}
               </ul>
             )}
           </header>
 
-          {options.length === 0 ? (
+          {!referenceTitle ? (
             <p className="mt-16 text-center text-ui text-(--text-tertiary)">
               Nothing to compare yet. Make a branch, then compare it with{" "}
               {currentTitle}.
@@ -469,99 +615,24 @@ export default function CompareView({
               <button
                 type="button"
                 className="text-(--text-secondary) underline-offset-2 hover:text-(--text-primary) hover:underline"
-                onClick={onRetry}
+                onClick={retry}
               >
                 Try Again
               </button>
             </p>
-          ) : !comparison ? (
+          ) : !loaded || !comparison ? (
             <p className="mt-16 text-center text-ui text-(--text-tertiary)">
               Loading “{referenceTitle}”…
             </p>
           ) : (
-            <>
-              <div className="compare-row mt-8 mb-2">
-                <p className="eyebrow truncate">{referenceTitle}</p>
-                <span />
-                <p className="eyebrow truncate">{currentTitle}</p>
-              </div>
-
-              {unchanged.length + unchangedConnections > 0 && (
-                <div className="compare-fold">
-                  <p className="min-w-0 truncate">
-                    {pluralise(unchanged.length, "unchanged component")}
-                    {tagCounts.size > 0 && (
-                      <span className="text-(--text-tertiary)">
-                        {"  ·  "}
-                        {[...tagCounts]
-                          .map(([tag, count]) =>
-                            tag === "untagged"
-                              ? `${count} untagged`
-                              : pluralise(count, tag),
-                          )
-                          .join(", ")}
-                      </span>
-                    )}
-                    {unchangedConnections > 0 && (
-                      <span className="text-(--text-tertiary)">
-                        {"  ·  "}
-                        {pluralise(unchangedConnections, "connection")}
-                      </span>
-                    )}
-                  </p>
-                  {unchanged.length > 0 && (
-                    <button
-                      type="button"
-                      aria-expanded={showUnchanged}
-                      className="shrink-0 text-(--text-secondary) transition-colors hover:text-(--text-primary)"
-                      onClick={() => setShowUnchanged((shown) => !shown)}
-                    >
-                      {showUnchanged ? "Hide" : "Show"}
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {showUnchanged && (
-                <ul
-                  aria-label="Unchanged Components"
-                  className="compare-list is-unchanged"
-                >
-                  {unchanged.map(componentRow)}
-                </ul>
-              )}
-
-              {differing.length === 0 ? (
-                <p className="mt-10 text-center text-ui text-(--text-tertiary)">
-                  {currentTitle} matches {referenceTitle}.
-                </p>
-              ) : (
-                <>
-                  <ul aria-label="Changed Components" className="compare-list">
-                    {(["changed", "added", "removed"] as const).flatMap(
-                      (status) =>
-                        byStatus(components, status).map(componentRow),
-                    )}
-                  </ul>
-                  {relationships.some(
-                    ({ status }) => status !== "unchanged",
-                  ) && (
-                    <>
-                      <h2 className="eyebrow mt-8 mb-2">Connections</h2>
-                      <ul
-                        aria-label="Changed Connections"
-                        className="compare-list"
-                      >
-                        {(["changed", "added", "removed"] as const).flatMap(
-                          (status) =>
-                            byStatus(relationships, status).map(connectionRow),
-                        )}
-                      </ul>
-                    </>
-                  )}
-                </>
-              )}
-            </>
+            <Differences
+              comparison={comparison}
+              reference={loaded}
+              referenceTitle={referenceTitle}
+              current={current}
+              currentTitle={currentTitle}
+              dispatch={dispatch}
+            />
           )}
         </div>
       </div>
@@ -571,21 +642,7 @@ export default function CompareView({
         aria-label="Compare Tools"
         className="absolute bottom-8.5 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2.5 border-b border-(--border-underline) bg-(--surface-canvas) px-1 pb-2"
       >
-        <ToolbarButton
-          label="Undo"
-          disabled={!canUndo}
-          onClick={() => dispatch({ type: "history/undo" })}
-        >
-          <Undo aria-hidden="true" size={16} strokeWidth={1.25} />
-        </ToolbarButton>
-        <span aria-hidden="true" className="menu-divider" />
-        <ToolbarButton
-          label="Redo"
-          disabled={!canRedo}
-          onClick={() => dispatch({ type: "history/redo" })}
-        >
-          <Redo aria-hidden="true" size={16} strokeWidth={1.25} />
-        </ToolbarButton>
+        <UndoRedo canUndo={canUndo} canRedo={canRedo} dispatch={dispatch} />
         <span aria-hidden="true" className="menu-divider" />
         <ToolbarButton
           label="Back to Canvas"
