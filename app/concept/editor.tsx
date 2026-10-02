@@ -15,7 +15,7 @@ import ConceptPanel from "./concept_panel";
 import { useExploration } from "./explore";
 import EditorHeader from "./header";
 import Notice from "./notice";
-import Rail from "./rail";
+import Rail, { type EditorView } from "./rail";
 import { conceptTitle, type OpenedBranch, useConceptSession } from "./session";
 
 interface ConceptEditorProps {
@@ -35,7 +35,7 @@ export default function ConceptEditor({
   const session = useConceptSession(workspace, summaries, opened);
   const { concepts, activeConcept, activeBranch, sync } = session;
   const exploration = useExploration(session);
-  const [view, setView] = useState<"canvas" | "compare">("canvas");
+  const [view, setView] = useState<EditorView>("canvas");
   const compare = useCompareReference(session, view === "compare");
   const [panelOpen, setPanelOpen] = useState(true);
   const [display, setDisplay] = useState<CanvasDisplay>({
@@ -55,10 +55,6 @@ export default function ConceptEditor({
     )
     .reverse();
   const togglePanel = useCallback(() => setPanelOpen((open) => !open), []);
-  const toggleCompare = useCallback(
-    () => setView((current) => (current === "compare" ? "canvas" : "compare")),
-    [],
-  );
 
   /** A new branch starts ready to name, while the panel is there to name it. */
   function startNaming(branchId: string | undefined) {
@@ -150,10 +146,10 @@ export default function ConceptEditor({
           >
             <Rail
               email={email}
+              view={view}
+              onViewChange={setView}
               panelOpen={panelOpen}
               onTogglePanel={togglePanel}
-              compareOpen={view === "compare"}
-              onToggleCompare={toggleCompare}
             />
 
             {/* Kept mounted so the panel can slide closed. */}

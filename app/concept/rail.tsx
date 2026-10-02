@@ -9,7 +9,14 @@ import {
   Squircle,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { type ReactNode, useEffect, useRef, useSyncExternalStore } from "react";
+import {
+  type CSSProperties,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useSyncExternalStore,
+} from "react";
 import { createClient } from "@/lib/supabase/client";
 import { isTyping } from "./keyboard";
 import Menu from "./menu";
@@ -20,23 +27,29 @@ const Lineage = createLucideIcon("lineage", [
   ["path", { d: "m15 9 6-6", key: "branch" }],
 ]);
 
-/** The Figma Compare icon, whose corners are rounder than Lucide's Copy. */
+/**
+ * The Figma Compare icon, whose corners are rounder than Lucide's Copy, drawn
+ * on Lucide's 2–22 grid so the stroke is not clipped at the edge.
+ */
 const Compare = createLucideIcon("compare", [
   [
     "path",
     {
-      d: "M20.04 10.39h-6.43a3.21 3.21 0 0 0-3.22 3.22v6.43a3.21 3.21 0 0 0 3.22 3.21h6.43a3.21 3.21 0 0 0 3.21-3.21v-6.43a3.21 3.21 0 0 0-3.21-3.22Z",
+      d: "M19.15 10.57h-5.72a2.85 2.85 0 0 0-2.86 2.86v5.72a2.85 2.85 0 0 0 2.86 2.85h5.72a2.85 2.85 0 0 0 2.85-2.85v-5.72a2.85 2.85 0 0 0-2.85-2.86Z",
       key: "front",
     },
   ],
   [
     "path",
     {
-      d: "M3.96 13.61a3.21 3.21 0 0 1-3.21-3.22V3.96A3.21 3.21 0 0 1 3.96.75h6.43a3.21 3.21 0 0 1 3.22 3.21",
+      d: "M4.85 13.43a2.85 2.85 0 0 1-2.85-2.86V4.85A2.85 2.85 0 0 1 4.85 2h5.72a2.85 2.85 0 0 1 2.86 2.85",
       key: "back",
     },
   ],
 ]);
+
+/** The view shown beside the panel: the canvas, under Concepts, or Compare. */
+export type EditorView = "canvas" | "compare";
 
 /** Views after Concepts; those still to come keep their shortcuts reserved. */
 const navigationItems = [
@@ -46,6 +59,9 @@ const navigationItems = [
   { label: "Bookmarks", Icon: Bookmark, key: "5" },
   { label: "History", Icon: RotateCcwClock, key: "6" },
 ];
+
+const railButtonClassName =
+  "flex h-8 w-full shrink-0 items-center justify-center rounded-md bg-(--surface-idle) transition-colors enabled:hover:bg-(--surface-shell)";
 
 const railIconProps = {
   "aria-hidden": true,
@@ -99,21 +115,36 @@ function RailItem({
  */
 export default function Rail({
   email,
+  view,
+  onViewChange,
   panelOpen,
   onTogglePanel,
-  compareOpen,
-  onToggleCompare,
 }: {
   email: string | undefined;
+  view: EditorView;
+  onViewChange: (view: EditorView) => void;
   panelOpen: boolean;
   onTogglePanel: () => void;
-  compareOpen: boolean;
-  onToggleCompare: () => void;
 }) {
   const router = useRouter();
   const settingsRef = useRef<HTMLSpanElement>(null);
   const isMac = useIsMac();
   const shortcut = (key: string) => (isMac ? `⌥${key}` : `Alt+${key}`);
+  // The open view's place in the rail, counting Concepts as the first.
+  const openIndex =
+    view === "compare"
+      ? 1 + navigationItems.findIndex(({ label }) => label === "Compare")
+      : 0;
+
+  // Concepts returns to the canvas, then toggles the panel once there.
+  const showConcepts = useCallback(
+    () => (view === "canvas" ? onTogglePanel() : onViewChange("canvas")),
+    [view, onTogglePanel, onViewChange],
+  );
+  const toggleCompare = useCallback(
+    () => onViewChange(view === "compare" ? "canvas" : "compare"),
+    [view, onViewChange],
+  );
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -126,10 +157,10 @@ export default function Rail({
 
       if (alt && event.code === "Digit1") {
         event.preventDefault();
-        onTogglePanel();
+        showConcepts();
       } else if (alt && event.code === "Digit4") {
         event.preventDefault();
-        onToggleCompare();
+        toggleCompare();
       } else if (command && !event.altKey && event.key === ",") {
         event.preventDefault();
         settingsRef.current?.querySelector("button")?.click();
@@ -138,21 +169,27 @@ export default function Rail({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onTogglePanel, onToggleCompare]);
+  }, [showConcepts, toggleCompare]);
 
   return (
     <nav className="my-1.5 ml-1.5 flex w-10 shrink-0 flex-col rounded-lg bg-(--surface-rail) p-1 shadow-[inset_0_0_0_1px_var(--border-rail)]">
-      <div className="flex flex-col gap-1">
+      <div className="relative flex flex-col gap-1">
+        <span
+          aria-hidden="true"
+          className="rail-indicator"
+          style={{ "--rail-index": openIndex } as CSSProperties}
+        />
         <RailItem id="rail-concepts" label="Concepts" shortcut={shortcut("1")}>
           <button
             type="button"
             aria-label="Concepts"
             aria-describedby="rail-concepts"
             aria-keyshortcuts="Alt+1"
+            aria-current={view === "canvas" ? "page" : undefined}
             aria-expanded={panelOpen}
             aria-controls="concepts-panel"
-            onClick={onTogglePanel}
-            className="flex h-8 w-full shrink-0 items-center justify-center rounded-md bg-(--surface-shell)"
+            onClick={showConcepts}
+            className={railButtonClassName}
           >
             <Squircle {...railIconProps} />
           </button>
@@ -173,10 +210,12 @@ export default function Rail({
                 aria-label={label}
                 aria-describedby={`rail-${key}`}
                 aria-keyshortcuts={`Alt+${key}`}
-                aria-pressed={available ? compareOpen : undefined}
+                aria-current={
+                  available && view === "compare" ? "page" : undefined
+                }
                 disabled={!available}
-                onClick={onToggleCompare}
-                className="flex h-8 w-full shrink-0 items-center justify-center rounded-md bg-(--surface-idle) transition-colors enabled:hover:bg-(--surface-shell) aria-pressed:bg-(--surface-shell)"
+                onClick={toggleCompare}
+                className={railButtonClassName}
               >
                 <Icon {...railIconProps} />
               </button>
