@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import type { ConceptSummary, Revision } from "@/lib/concepts/database";
 import type { ConceptId, Workspace } from "@/lib/concepts/model";
+import type { Operation } from "@/lib/concepts/operations";
 import {
   exportConcept,
   ImportError,
@@ -95,11 +96,15 @@ export default function ConceptEditor({
     window.setTimeout(() => URL.revokeObjectURL(url));
   }
 
+  /** A new concept opens on its canvas; Compare would have nothing to show. */
+  function createConcept(operations?: Operation[]) {
+    session.createConcept(operations);
+    setView("canvas");
+  }
+
   async function importConcept(file: File) {
     try {
-      session.createConcept(
-        importOperations(parseConceptExport(await file.text())),
-      );
+      createConcept(importOperations(parseConceptExport(await file.text())));
     } catch (error) {
       if (!(error instanceof ImportError)) {
         throw error;
@@ -196,7 +201,7 @@ export default function ConceptEditor({
                   renamingBranchId={renamingBranchId}
                   onRenamingBranchChange={setRenamingBranchId}
                   onSelect={session.selectBranch}
-                  onCreate={() => session.createConcept()}
+                  onCreate={() => createConcept()}
                   onImport={importConcept}
                   onExport={downloadConcept}
                   onCreateBranch={(conceptId, branchId) =>

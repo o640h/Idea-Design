@@ -38,12 +38,14 @@ export default function ConceptOutline({
 
   function addComponent() {
     const id = crypto.randomUUID();
+    // The first one starts below the canvas header, with its text in line
+    // with the title, as a new concept's canvas first shows it.
     const position = componentLayouts.length
       ? {
           x: Math.min(...componentLayouts.map((layout) => layout.x)),
           y: Math.max(...componentLayouts.map((layout) => layout.y)) + 120,
         }
-      : { x: 0, y: 0 };
+      : { x: 28, y: 120 };
 
     dispatch({
       type: "component/create",

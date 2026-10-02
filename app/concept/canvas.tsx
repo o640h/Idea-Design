@@ -110,6 +110,7 @@ function CanvasContent({
   } | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const selectedAtPointerDown = useRef<string | null>(null);
+  const selectedAtKeyDown = useRef<string | null>(null);
 
   const base = explore?.base;
   const reviewed = explore?.reviewed;
@@ -258,6 +259,10 @@ function CanvasContent({
       ]),
     );
 
+    const titles = new Map(
+      nodes.map((node) => [node.id, node.data.component.title || "Untitled"]),
+    );
+
     const edge = (relationship: ConceptRelationship): RelationshipEdgeType => {
       const leftToRight =
         (centreX.get(relationship.sourceComponentId) ?? 0) <=
@@ -270,6 +275,13 @@ function CanvasContent({
         target: relationship.targetComponentId,
         sourceHandle: leftToRight ? "right" : "left",
         targetHandle: leftToRight ? "left" : "right",
+        // React Flow names an unlabelled edge by its IDs.
+        ariaLabel: [
+          `${titles.get(relationship.sourceComponentId)} to ${titles.get(relationship.targetComponentId)}`,
+          relationship.type,
+        ]
+          .filter(Boolean)
+          .join(", "),
         data: { relationship },
         selected:
           selection?.kind === "relationship" &&
@@ -322,16 +334,23 @@ function CanvasContent({
       x: (bounds?.left ?? 0) + (bounds?.width ?? 0) / 2,
       y: (bounds?.top ?? 0) + (bounds?.height ?? 0) / 2,
     });
-    let position = { x: centre.x - 120, y: centre.y - BLOCK_TEXT_OFFSET.y };
+    const position = { x: centre.x - 120, y: centre.y - BLOCK_TEXT_OFFSET.y };
+    // Clear of every block, with a gap, by their measured size where known.
+    const overlaps = (y: number) =>
+      nodes.some(({ position: other, measured }) => {
+        const width = measured?.width ?? 240;
+        const height = measured?.height ?? 48;
 
-    while (
-      componentLayouts.some(
-        (existing) =>
-          Math.abs(existing.x - position.x) < 8 &&
-          Math.abs(existing.y - position.y) < 8,
-      )
-    ) {
-      position = { x: position.x + 24, y: position.y + 24 };
+        return (
+          position.x < other.x + width + 16 &&
+          position.x + 240 > other.x - 16 &&
+          y < other.y + height + 16 &&
+          y + 48 > other.y - 16
+        );
+      });
+
+    while (overlaps(position.y)) {
+      position.y += 24;
     }
 
     return position;
@@ -475,11 +494,12 @@ function CanvasContent({
         const focusedNodeId =
           target?.closest<HTMLElement>(".react-flow__node")?.dataset.id;
 
-        // Enter presses a focused button rather than editing the selection,
-        // and React Flow selects a focused node before it can be edited.
+        // Enter presses a focused button rather than editing the selection.
+        // On a focused node, React Flow selects it during this same keypress,
+        // so it is edited only if it was already selected.
         if (
           !target?.closest("button, a[href]") &&
-          (!focusedNodeId || focusedNodeId === selection.id)
+          (!focusedNodeId || focusedNodeId === selectedAtKeyDown.current)
         ) {
           event.preventDefault();
           setEditingId(selection.id);
@@ -507,9 +527,13 @@ function CanvasContent({
         className="concept-canvas relative h-full"
         data-borders={display.borders || undefined}
         data-labels={display.labels || undefined}
-        // React Flow selects on pointer down, so note what was selected before.
+        // React Flow selects on pointer down and on Enter, so note what was
+        // selected before.
         onPointerDownCapture={() => {
           selectedAtPointerDown.current = selection?.id ?? null;
+        }}
+        onKeyDownCapture={() => {
+          selectedAtKeyDown.current = selection?.id ?? null;
         }}
       >
         {view === "canvas" ? (
