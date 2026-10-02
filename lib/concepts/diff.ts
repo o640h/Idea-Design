@@ -3,6 +3,7 @@ import type {
   ConceptRelationship,
   EditableConcept,
 } from "./model";
+import { relationshipKind } from "./model";
 import type { Operation } from "./operations";
 
 /** One item compared by ID: what it was and what it became. */
@@ -92,6 +93,17 @@ export function compareConcepts(
       RELATIONSHIP_FIELDS,
     ),
   };
+}
+
+/** Whether anything other than layout differs between two states. */
+export function hasDifferences(
+  before: EditableConcept,
+  after: EditableConcept,
+) {
+  const { components, relationships } = compareConcepts(before, after);
+  return [...components, ...relationships].some(
+    ({ status }) => status !== "unchanged",
+  );
 }
 
 /** How components differ from an earlier state, matched by ID. Layout is ignored. */
@@ -199,7 +211,9 @@ export function takeVersion(
 
 /**
  * Unchanged components connected to a changed one, before or after the
- * change. They may need review, but nothing about them has changed.
+ * change. They may need review, but nothing about them has changed. A
+ * dependency points one way: what depends on a change needs review, while
+ * what the change depends on does not.
  */
 export function connectedToChanges(
   base: EditableConcept,
@@ -218,11 +232,14 @@ export function connectedToChanges(
     ...present.concept.relationships,
   ];
 
-  for (const { sourceComponentId, targetComponentId } of relationships) {
-    for (const [from, to] of [
-      [sourceComponentId, targetComponentId],
-      [targetComponentId, sourceComponentId],
-    ]) {
+  for (const { sourceComponentId, targetComponentId, type } of relationships) {
+    const affected = [[targetComponentId, sourceComponentId]];
+
+    if (relationshipKind(type) !== "dependency") {
+      affected.push([sourceComponentId, targetComponentId]);
+    }
+
+    for (const [from, to] of affected) {
       if (changed.has(from) && existing.has(to) && !changed.has(to)) {
         connected.add(to);
       }

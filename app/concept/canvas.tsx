@@ -63,7 +63,7 @@ export interface CanvasExploration {
   available: boolean;
   chip: ReactNode;
   onTool: (tool: ExploreTool) => void;
-  onReviewed: (id: ComponentId) => void;
+  onReviewed: (ids: ComponentId[]) => void;
   onDiscard: () => void;
 }
 
@@ -73,6 +73,9 @@ interface ConceptCanvasProps {
   branchTitle: string;
   display: CanvasDisplay;
   onDisplayChange: (display: CanvasDisplay) => void;
+  /** Kept by the editor, so switching branches keeps the Outline open. */
+  view: CanvasView;
+  onViewChange: (view: CanvasView) => void;
   /** Starts editing this component, title selected, as the canvas opens. */
   initialEditId: ComponentId | null;
   onExplore: (id: ComponentId) => void;
@@ -93,15 +96,16 @@ function CanvasContent({
   branchTitle,
   display,
   onDisplayChange,
+  view,
+  onViewChange,
   initialEditId,
   onExplore,
   explore,
 }: ConceptCanvasProps) {
   const { concept, componentLayouts } = state.present;
   const { selection } = state;
-  const { screenToFlowPosition, fitView } = useReactFlow();
+  const { screenToFlowPosition, fitView, setCenter, getZoom } = useReactFlow();
   const containerRef = useRef<HTMLDivElement>(null);
-  const [view, setView] = useState<CanvasView>("canvas");
   const [editingId, setEditingId] = useState(initialEditId);
   const [selectingId, setSelectingId] = useState(initialEditId);
   const [draft, setDraft] = useState<{
@@ -511,11 +515,38 @@ function CanvasContent({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [dispatch, selection, view, explore, onExplore]);
 
+  /** Selects the next component to review, in reading order, and centres it. */
+  function showNextReview() {
+    const flagged = nodes
+      .filter(({ id }) => changes?.review.has(id))
+      .sort(
+        (a, b) => a.position.y - b.position.y || a.position.x - b.position.x,
+      );
+    const next =
+      flagged[
+        (flagged.findIndex(({ id }) => id === selection?.id) + 1) %
+          flagged.length
+      ];
+
+    if (next) {
+      dispatch({
+        type: "selection/set",
+        selection: { kind: "component", id: next.id },
+      });
+      setCenter(
+        next.position.x + (next.measured?.width ?? 0) / 2,
+        next.position.y + (next.measured?.height ?? 0) / 2,
+        { zoom: getZoom(), duration: animationDuration() },
+      );
+    }
+  }
+
   const header = (
     <ConceptHeader
       concept={concept}
       branchTitle={branchTitle}
       reviewCount={changes?.review.size ?? 0}
+      onNextReview={view === "canvas" ? showNextReview : undefined}
       dispatch={dispatch}
     />
   );
@@ -612,7 +643,12 @@ function CanvasContent({
                       ? [
                           {
                             label: "Mark Reviewed",
-                            onSelect: () => explore?.onReviewed(node.id),
+                            onSelect: () => explore?.onReviewed([node.id]),
+                          },
+                          {
+                            label: "Mark All Reviewed",
+                            onSelect: () =>
+                              explore?.onReviewed([...(changes?.review ?? [])]),
                           },
                         ]
                       : []),
@@ -742,6 +778,14 @@ function CanvasContent({
             editable={state.present}
             dispatch={dispatch}
             header={header}
+            onExplore={(id) => {
+              dispatch({
+                type: "selection/set",
+                selection: { kind: "component", id },
+              });
+              onExplore(id);
+              onViewChange("canvas");
+            }}
           />
         )}
 
@@ -757,7 +801,7 @@ function CanvasContent({
 
         <BottomBar
           view={view}
-          onViewChange={setView}
+          onViewChange={onViewChange}
           onAdd={() => createDraft(centrePosition())}
           onExplore={
             selection?.kind === "component"
@@ -792,12 +836,15 @@ function ConceptHeader({
   concept,
   branchTitle,
   reviewCount,
+  onNextReview,
   dispatch,
 }: {
   concept: Concept;
   branchTitle: string;
   /** Components connected to changes made while exploring. */
   reviewCount: number;
+  /** Steps through them on the canvas. */
+  onNextReview?: () => void;
   dispatch: EditorDispatch;
 }) {
   return (
@@ -825,7 +872,15 @@ function ConceptHeader({
         {reviewCount > 0 && (
           <>
             <span aria-hidden="true">{"  ·  "}</span>
-            <span className="text-(--attention)">{reviewCount} to Review</span>
+            <button
+              type="button"
+              title="Show the next component to review"
+              disabled={!onNextReview}
+              onClick={onNextReview}
+              className="pointer-events-auto text-(--attention) underline-offset-2 enabled:hover:underline"
+            >
+              {reviewCount} to Review
+            </button>
           </>
         )}
       </p>

@@ -248,39 +248,6 @@ Several automation interactions needed recovery: a checkbox/button role mismatch
 
 The captured console messages included browser-extension warnings and a React Flow attribution warning. No application crash was observed. This was not a full performance, accessibility, offline-recovery or permissions audit.
 
-## Does This Produce Better Ideas For An AI?
-
-My assessment is that the underlying workflow can improve the quality of an AI-assisted idea-development process. This run demonstrated more explicit alternatives and consequences, but did not measure improved novelty or isolate the effect of the app from a well-structured text prompt.
-
-The useful contribution is an external, editable representation of alternatives. Stable identities keep a mechanism recognisable after its wording changes. Branches keep a competing proposal available. Relationships expose what deserves reconsideration. Comparison makes it harder to silently abandon an earlier premise or claim that nothing changed. These are useful supports for repeated generation, evaluation and revision.
-
-The relevant unit of progress is a better hypothesis or decision, not another node. Replacing a real-time timer with resource pressure creates a distinct game mechanism. Replacing worker video with event logs changes diagnostics and privacy. Combining priority-region capture with selective raw retention changes an observation architecture. Merely renaming those ideas or adding tags would not provide the same value.
-
-I would challenge the claim that an LLM's ideas are necessarily existing human thoughts copied from its data. Learned patterns can be recombined into proposals suited to new constraints. However, producing text that is new to this conversation does not establish that an idea is historically original, feasible or useful. This review did not search the literature or market for each scenario's concepts, and none is presented as an invention.
-
-The pattern has research precedent: Tree of Thoughts studies branching, evaluation and backtracking over candidate reasoning states and reports improvements on the particular tasks it evaluates. That supports exploring this kind of process; it does not validate Idea Design or prove a creativity gain in this review. [Yao et al., Tree of Thoughts](https://arxiv.org/abs/2305.10601).
-
-There are also reasons to preserve independent human directions. In a story-writing experiment, access to generative-AI ideas improved evaluated creative outputs while making those outputs more similar to one another. That is evidence for an anchoring/diversity concern in that setting, not a universal claim about every model or creative task. [Doshi and Hauser, creativity and diversity study](https://arxiv.org/abs/2312.00506).
-
-For this AI operator, browser manipulation consumes effort alongside reasoning. The retest shows that arranging nodes is worthwhile when it makes consequences readable; my initial reliance on Outline understated that benefit. However, a machine reasoning process need not enter every operation through pointer gestures. The operation model could support machine contributions while the canvas remains useful for human inspection. This is an architectural observation, not a recommendation to add an API in task 3.4.
-
-The fresh Optional Recovery pass illustrates a useful improvement in specificity: instead of debating only guest-first versus account-first onboarding, I separated recovery from synchronisation, revised the dependent promises, and added a falsifiable test. The pipeline helped keep those consequences visible. It did not supply new empirical evidence, demonstrate originality, or establish an improvement over using the same branching discipline in text. There is no basis here for saying it changes my underlying model capabilities.
-
-A disciplined process would be: define the goal and acceptance criteria; preserve an explicit baseline; vary a consequential mechanism or constraint; revisit connected assumptions; evaluate candidates against evidence; compare; combine compatible contributions; preserve why the choice was made. The present app supports the middle of that process more strongly than evidence evaluation or recording the decision rationale.
-
-Without external feedback, branching can produce many plausible variations of the same weak premise. Using an AI to generate and grade every alternative can also reinforce a shared blind spot. More branches are useful only when they broaden the mechanisms considered or help test assumptions. For engineering that feedback may be a calculation or prototype; for film it may be a treatment review; for a game it is playtesting; for product design it is observed behaviour.
-
-The planned AI features should therefore reduce useful work, preserve provenance and expose uncertainty. Structure extraction and inspectable consequence suggestions can help. Flooding the canvas with generated proposals would risk both meta-work and fixation. The app's orb was not used as an implemented AI assistant in these sessions; Phase 6 and the broader Phase 10 intelligence work remain pending.
-
-## What About A Future ASI?
-
-This is necessarily speculative. Branching hypotheses, retaining alternatives, checking constraints and preserving provenance could remain useful even with much stronger intelligence. The current UI is not evidence for the internal representation such a system would use.
-
-A future system might reason over executable models, simulations, probabilistic hypotheses or much richer representations than text components and explicit links. Forcing all that reasoning through human-sized canvas cards could discard useful detail and add overhead.
-
-The durable opportunity is a human-inspectable interface to proposals, alternatives, evidence and accepted changes. If a powerful system develops many candidates, people still need to inspect what changed, understand its justification, reject assumptions and control which proposal becomes shared work. Idea Design's identity, branch and operation primitives could support that interface. Intelligence alone does not make those human review needs disappear.
-
-This suggests a stronger product thesis than claiming the canvas is how an ASI will think: make complex idea development editable, comparable and accountable across human and machine contributions.
 
 ## Recommended Real-User Validation
 

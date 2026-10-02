@@ -1,7 +1,8 @@
 "use client";
 
 import { Check, ChevronDown } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { hasDifferences } from "@/lib/concepts/diff";
 import {
   type ComponentId,
   type ConceptComponent,
@@ -13,6 +14,7 @@ import {
 import type { Operation } from "@/lib/concepts/operations";
 import type { CanvasExploration } from "./canvas";
 import Menu from "./menu";
+import Notice from "./notice";
 import type { ConceptSession } from "./session";
 
 export type ExploreTool = "substitute" | "constrain" | "remove";
@@ -46,12 +48,24 @@ interface Exploration {
     base: EditableConcept;
     /** Connected components someone looked at and left as they are. */
     reviewed: ComponentId[];
+    /** The component whose title names the branch while exploring. */
+    namedBy: ComponentId | null;
+    /** The name last given automatically; renaming the branch keeps yours. */
+    autoTitle: string;
   }[];
 }
 
-function shortTitle({ title }: ConceptComponent) {
-  const text = title.trim() || "Untitled";
-  return text.length > 32 ? `${text.slice(0, 31).trimEnd()}…` : text;
+/** Short enough to fit the panel and the chip, cut at a word. */
+function fitName(text: string, length = 24) {
+  const name = text.trim().replace(/\s+/g, " ") || "Untitled";
+
+  if (name.length <= length) {
+    return name;
+  }
+
+  const cut = name.slice(0, length - 1);
+  const space = cut.lastIndexOf(" ");
+  return `${(space > length / 2 ? cut.slice(0, space) : cut).trimEnd()}…`;
 }
 
 /** Beside the component, moved down past anything already there. */
@@ -76,25 +90,22 @@ function constraintPosition(document: EditableConcept, id: ComponentId) {
   return position;
 }
 
-/** The branch a tool makes, and which component to start editing in it. */
+/**
+ * The branch a tool makes, and which component to start editing in it. A
+ * substitute or constraint names the branch once it is written.
+ */
 function toolBranch(
   tool: ExploreTool,
   document: EditableConcept,
   component: ConceptComponent,
 ): { title: string; operations: Operation[]; editId: ComponentId | null } {
-  const name = shortTitle(component);
-
   switch (tool) {
     case "substitute":
-      return {
-        title: `Instead of ${name}`,
-        operations: [],
-        editId: component.id,
-      };
+      return { title: "Substitute", operations: [], editId: component.id };
 
     case "remove":
       return {
-        title: `Without ${name}`,
+        title: `Without ${fitName(component.title, 16)}`,
         operations: [{ type: "component/delete", id: component.id }],
         editId: null,
       };
@@ -103,7 +114,7 @@ function toolBranch(
       const id = crypto.randomUUID();
 
       return {
-        title: `Constraint on ${name}`,
+        title: "Constraint",
         operations: [
           {
             type: "component/create",
@@ -175,9 +186,9 @@ function ExploreChip({
 
   return (
     <section aria-label="Exploring" className="explore-chip">
-      <p className="truncate">
-        <span className="text-(--text-tertiary)">Exploring From </span>“
-        {componentTitle || "Untitled"}”
+      <p className="truncate" title={componentTitle || undefined}>
+        <span className="text-(--text-tertiary)">Exploring </span>“
+        {fitName(componentTitle)}”
       </p>
       <span aria-hidden="true" className="text-(--text-tertiary)">
         ·
@@ -211,7 +222,7 @@ function ExploreChip({
       </button>
       <button
         type="button"
-        title="Keep these branches"
+        title="Keep the branches you changed"
         className="explore-chip-action is-primary"
         onClick={onDone}
       >
@@ -234,6 +245,7 @@ export function useExploration(session: ConceptSession) {
     branchId: string;
     componentId: ComponentId;
   } | null>(null);
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false);
   const explored = exploration?.branches.find(
     ({ id }) => id === activeBranch.id,
   );
@@ -258,6 +270,51 @@ export function useExploration(session: ConceptSession) {
     setInitialEdit(null);
   }
 
+  // Each explored branch as it is now, beside the concept it started from.
+  const explorations = (exploration?.branches ?? []).flatMap((explored) => {
+    const branch = activeConcept.branches.find(({ id }) => id === explored.id);
+    return branch?.editor
+      ? [{ ...explored, branch, editor: branch.editor }]
+      : [];
+  });
+  const changed = explorations.filter(({ base, editor }) =>
+    hasDifferences(base, editor.present),
+  );
+  // A substitute or constraint names its branch as it is written, unless the
+  // branch has been renamed since.
+  const renames = explorations.flatMap(
+    ({ id, namedBy, autoTitle, branch, editor }) => {
+      const title = editor.present.concept.components.find(
+        (candidate) => candidate.id === namedBy,
+      )?.title;
+      const name = title?.trim() && fitName(title);
+
+      return name && name !== autoTitle && branch.title === autoTitle
+        ? [{ id, name }]
+        : [];
+    },
+  );
+  const renameKey = renames.map(({ id, name }) => `${id}:${name}`).join("|");
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: renames are keyed by their content
+  useEffect(() => {
+    if (!exploration || !renames.length) {
+      return;
+    }
+
+    for (const { id, name } of renames) {
+      session.renameBranch(exploration.conceptId, id, name);
+    }
+
+    setExploration({
+      ...exploration,
+      branches: exploration.branches.map((branch) => {
+        const rename = renames.find(({ id }) => id === branch.id);
+        return rename ? { ...branch, autoTitle: rename.name } : branch;
+      }),
+    });
+  }, [renameKey]);
+
   function explore(tool: ExploreTool) {
     if (!exploration || !origin?.editor || !component) {
       return;
@@ -279,14 +336,20 @@ export function useExploration(session: ConceptSession) {
       ...exploration,
       branches: [
         ...exploration.branches,
-        { id: branchId, base: origin.editor.present, reviewed: [] },
+        {
+          id: branchId,
+          base: origin.editor.present,
+          reviewed: [],
+          namedBy: tool === "remove" ? null : editId,
+          autoTitle: title,
+        },
       ],
     });
     setInitialEdit(editId ? { branchId, componentId: editId } : null);
   }
 
   /** Archives the branches made while exploring and returns to the original. */
-  function discard() {
+  function discardNow() {
     if (!exploration) {
       return;
     }
@@ -298,15 +361,42 @@ export function useExploration(session: ConceptSession) {
     );
     session.selectBranch(exploration.conceptId, exploration.originBranchId);
     setExploration(null);
+    setConfirmingDiscard(false);
   }
 
-  function markReviewed(componentId: ComponentId) {
+  /** Asks first when discarding would archive real changes. */
+  function discard() {
+    if (changed.length) {
+      setConfirmingDiscard(true);
+    } else {
+      discardNow();
+    }
+  }
+
+  /** Keeps the branches that changed something and archives the rest. */
+  function finish() {
+    if (!exploration) {
+      return;
+    }
+
+    const unchanged = explorations
+      .filter((explored) => !changed.includes(explored))
+      .map(({ id }) => id);
+
+    if (unchanged.length) {
+      session.setArchived(exploration.conceptId, unchanged, true);
+    }
+
+    setExploration(null);
+  }
+
+  function markReviewed(componentIds: ComponentId[]) {
     if (exploration) {
       setExploration({
         ...exploration,
         branches: exploration.branches.map((branch) =>
           branch.id === activeBranch.id
-            ? { ...branch, reviewed: [...branch.reviewed, componentId] }
+            ? { ...branch, reviewed: [...branch.reviewed, ...componentIds] }
             : branch,
         ),
       });
@@ -329,7 +419,7 @@ export function useExploration(session: ConceptSession) {
           session.selectBranch(exploration.conceptId, branchId)
         }
         onDiscard={discard}
-        onDone={() => setExploration(null)}
+        onDone={finish}
       />
     ),
     onTool: explore,
@@ -337,8 +427,40 @@ export function useExploration(session: ConceptSession) {
     onDiscard: discard,
   };
 
+  const count = changed.length;
+  const notice = confirmingDiscard && (
+    <Notice
+      title="Discard Explored Branches"
+      onDismiss={() => setConfirmingDiscard(false)}
+      actions={
+        <>
+          <button
+            type="button"
+            data-autofocus
+            className="menu-item"
+            onClick={() => setConfirmingDiscard(false)}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="menu-item is-primary"
+            onClick={discardNow}
+          >
+            Discard
+          </button>
+        </>
+      }
+    >
+      {count === 1 ? "One branch has" : `${count} branches have`} changes. They
+      will move to Archived in the branch menu, where you can open them again.
+    </Notice>
+  );
+
   return {
     canvas,
+    /** Shown over the editor, which is inert while it is. */
+    notice: notice || null,
     initialEditId: initialEdit?.componentId ?? null,
     start(componentId: ComponentId) {
       setExploration({

@@ -41,31 +41,13 @@ people wanted somewhere to record why a branch won or lost.
 
 ## Findings
 
-### Bugs To Fix Before User Testing
-
-1. **Enter on a toolbar button edits the selected component.** With a component
-   selected, Enter on Substitute (or any bottom-bar button) is caught by the canvas's
-   Enter shortcut, which opens the selection for editing and cancels the button press.
-   Sofia's substitute text overwrote Main's component. The handler in `canvas.tsx` only
-   skips text fields.
-2. **Enter on a focused component selects and edits in one press,** so a keyboard
-   user's next shortcut is typed into the title.
-3. **Connections are announced by their IDs** ("Edge from ef79a0c5-… to …").
-4. **New Concept or Import while Compare is open** lands in an empty Compare (confirming
-   Codex, and extending it to import).
-5. **Add stacks components 24px apart, which causes wrong edits.** Lena's double-click
-   on the research question hit the component stacked over it and overwrote it. Undo
-   recovered it. Placing the next component beside the last would avoid this.
-6. **Outline-made components start under the canvas header:** the first component
-   overprints the concept title.
-
 ### Friction Worth Fixing Before Recruiting
 
 - **Generated branch names** describe what was replaced ("Instead of Users try the
   app…"), can be ungrammatical ("Without Market stalls use the roadway") and go stale
-  once that component is edited.
+  once that component is edited. Make the generated names much shorter, so they actually fit on screen too, this applies to the explore toolbar as well.
 - **Compare noise:** "Untagged" on every card for people who never tag, and counts that
-  mix components with connections.
+  mix components with connections. 
 - **Compare reads only from your own branch,** so reviewing a teammate's proposal from
   Main reads backwards. A swap-sides control would fix it.
 - **Explore exits:** Done keeps branches even when nothing changed; Discard by Esc is
@@ -99,40 +81,3 @@ Compare and lineage (4.2), export of branches (4.2), filtering and zoom levels a
 | Organising instead of improving | Real but small: arranging stacked Adds, renaming branches, re-choosing the Outline |
 | Thinking existing tools do not support | Clearest with Constrain-then-repair and revived framings; weakest for prose-heavy work |
 | Wanted beyond Take This Version | Yes: single fields, and combining proposals across people and copies |
-
-## Does This Make An AI Think Better?
-
-It improves the process, not the underlying ability.
-
-**Where it helped.** Generating alternatives is cheap for a model. Holding a baseline
-fixed, varying one thing and honestly listing what broke is not; unaided, a second
-alternative quietly changes several things and is never compared. Substitute, Constrain
-and Remove make the variation explicit and local, and Review and Compare check it
-deterministically. In the pricing session the constraint forced the enterprise tier to
-be repaired; in the onboarding session Review exposed a now-meaningless sign-up prompt.
-
-**Where it did not.** Every substitute came from the model's own priors; the structure
-changes which question is answered, not what is known. The binding limit is selection
-rather than originality: telling a good new idea from a plausible one needs feedback
-from reality, which the tool makes visible but cannot supply.
-
-**For agents.** The canvas serves people. For an agent the valuable layer is underneath:
-stable IDs, an operation log, branches and a deterministic diff, which together form a
-scratchpad that outlives a context window. Coding agents improved partly because code has
-git for branching and tests for verification. Idea Design supplies the branching; the
-missing half is a falsifiable check attached to each branch.
-
-**For a future ASI.** A stronger system would likely reason over executable models rather
-than text cards. As generation gets cheaper, though, human review becomes the bottleneck,
-and the durable value is a legible ledger of what changed, what it affects, what was
-checked and why a branch won. Codex's proposed experiment, comparing free generation with
-plain-text branching and with Idea Design, is the right way to test whether the interface
-itself adds anything.
-
-## Artifacts
-
-Persona concepts remain in the Personal workspace: Habit App Onboarding, The Lighthouse
-Keeper, Pricing for Lumen Analytics, Riverside Car-Free Weekend Trial, Billing Service
-Extraction, Thesis: Remote Work and Innovation, an untitled podcast concept, and two
-"Move to Lisbon?" concepts (original and imported copy). Two repro concepts were moved to
-Recently Deleted. No implementation-plan checkboxes were changed.

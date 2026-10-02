@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronDown } from "lucide-react";
+import { ArrowLeftRight, Check, ChevronDown } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { revisionDocument } from "@/lib/concepts/database";
 import {
@@ -108,6 +108,8 @@ export function useCompareReference(session: ConceptSession, open: boolean) {
     id,
     /** Null while it loads; "failed" if it could not be loaded. */
     reference,
+    /** The branch on the left; null for where the open branch started. */
+    branchId: branch?.id ?? null,
     choose: setChosenId,
     retry: () =>
       setStartDocuments(({ [id ?? ""]: _failed, ...loaded }) => loaded),
@@ -161,7 +163,7 @@ function Card({
   current,
   children,
 }: {
-  eyebrow: string;
+  eyebrow: string | null;
   label?: string | null;
   current?: boolean;
   children: ReactNode;
@@ -170,13 +172,15 @@ function Card({
 
   return (
     <div className={`compare-card${marked ? " is-changed" : ""}`}>
-      <div className="flex items-start justify-between gap-3">
-        <p className="eyebrow flex items-center gap-1.5">
-          {marked && <span aria-hidden="true" className="compare-dot" />}
-          {eyebrow}
-        </p>
-        {label && <p className="compare-label">{label}</p>}
-      </div>
+      {(eyebrow || label) && (
+        <div className="mb-1 flex items-start justify-between gap-3">
+          <p className="eyebrow flex items-center gap-1.5">
+            {marked && <span aria-hidden="true" className="compare-dot" />}
+            {eyebrow}
+          </p>
+          {label && <p className="compare-label">{label}</p>}
+        </div>
+      )}
       {children}
     </div>
   );
@@ -201,8 +205,8 @@ function ComponentCard({
     document.concept.components.find(({ id }) => id === component.parentId);
 
   return (
-    <Card eyebrow={component.tag ?? "Untagged"} label={label} current={current}>
-      <p className="mt-1 text-[13px] leading-[1.35] text-(--text-primary)">
+    <Card eyebrow={component.tag} label={label} current={current}>
+      <p className="text-[13px] leading-[1.35] text-(--text-primary)">
         {component.title || "Untitled"}
       </p>
       {component.description && (
@@ -242,7 +246,7 @@ function ConnectionCard({
       label={label}
       current={current}
     >
-      <p className="mt-1 text-[13px] leading-[1.35] text-(--text-primary)">
+      <p className="text-[13px] leading-[1.35] text-(--text-primary)">
         {title(relationship.sourceComponentId)}
         <span className="px-1.5 text-(--text-tertiary)">→</span>
         {title(relationship.targetComponentId)}
@@ -254,8 +258,8 @@ function ConnectionCard({
 function AbsentCard({ tag, branch }: { tag?: string | null; branch: string }) {
   return (
     <div className="compare-card is-absent">
-      <p className="eyebrow">{tag ?? "Untagged"}</p>
-      <p className="mt-1 text-small text-(--text-tertiary)">Not in {branch}</p>
+      {tag && <p className="eyebrow mb-1">{tag}</p>}
+      <p className="text-small text-(--text-tertiary)">Not in {branch}</p>
     </div>
   );
 }
@@ -308,10 +312,21 @@ function Differences({
   const changedConnections = relationships.length - unchangedConnections;
   const tagCounts = new Map<string, number>();
 
-  for (const { after } of unchanged) {
-    const tag = after.tag ?? "untagged";
-    tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
+  if (unchanged.some(({ after }) => after.tag)) {
+    for (const { after } of unchanged) {
+      const tag = after.tag ?? "untagged";
+      tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
+    }
   }
+
+  const connectionCounts = DIFFERING.map(
+    (status) =>
+      [
+        status,
+        relationships.filter((difference) => difference.status === status)
+          .length,
+      ] as const,
+  ).filter(([, count]) => count > 0);
 
   const takeButton = (id: string) => (
     <button
@@ -460,7 +475,13 @@ function Differences({
           </ul>
           {changedConnections > 0 && (
             <>
-              <h2 className="eyebrow mt-8 mb-2">Connections</h2>
+              <h2 className="eyebrow mt-8 mb-2">
+                Connections
+                <span className="text-(--text-placeholder)">{"  ·  "}</span>
+                {connectionCounts
+                  .map(([status, count]) => `${count} ${status}`)
+                  .join(", ")}
+              </h2>
               <ul aria-label="Changed Connections" className="compare-list">
                 {DIFFERING.flatMap((status) =>
                   relationships
@@ -488,6 +509,7 @@ export default function CompareView({
   canUndo,
   canRedo,
   dispatch,
+  onSwap,
   onClose,
 }: {
   currentTitle: string;
@@ -496,6 +518,8 @@ export default function CompareView({
   canUndo: boolean;
   canRedo: boolean;
   dispatch: EditorDispatch;
+  /** Opens the branch on the left, when it is one, to compare from there. */
+  onSwap?: () => void;
   onClose: () => void;
 }) {
   const { options, id, reference, choose, retry } = compare;
@@ -505,9 +529,9 @@ export default function CompareView({
     () => loaded && compareConcepts(loaded, current),
     [loaded, current],
   );
-  const differences = comparison
-    ? [...comparison.components, ...comparison.relationships]
-    : [];
+  const componentCount = (status: string) =>
+    comparison?.components.filter((difference) => difference.status === status)
+      .length ?? 0;
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -581,7 +605,19 @@ export default function CompareView({
                     }
                   </Menu>
                 )}
-                <span className="text-small text-(--text-tertiary)">vs</span>
+                {onSwap ? (
+                  <button
+                    type="button"
+                    aria-label="Swap Sides"
+                    title="Open the left branch and compare it with this one"
+                    onClick={onSwap}
+                    className="grid size-6 place-items-center rounded-sm text-(--text-tertiary) transition-colors hover:text-(--text-primary)"
+                  >
+                    <ArrowLeftRight aria-hidden="true" size={12} />
+                  </button>
+                ) : (
+                  <span className="text-small text-(--text-tertiary)">vs</span>
+                )}
                 <span className="compare-branch is-current">
                   <span aria-hidden="true" className="compare-dot" />
                   {currentTitle}
@@ -589,15 +625,11 @@ export default function CompareView({
               </div>
             </div>
             {comparison && (
-              <ul aria-label="Summary" className="flex gap-1.5">
+              <ul aria-label="Components" className="flex items-center gap-1.5">
+                <li className="eyebrow mr-1">Components</li>
                 {[...DIFFERING, "unchanged"].map((status) => (
                   <li key={status} className="compare-count">
-                    {
-                      differences.filter(
-                        (difference) => difference.status === status,
-                      ).length
-                    }{" "}
-                    {status}
+                    {componentCount(status)} {status}
                   </li>
                 ))}
               </ul>

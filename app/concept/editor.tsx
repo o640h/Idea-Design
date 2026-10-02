@@ -17,6 +17,7 @@ import { useExploration } from "./explore";
 import EditorHeader from "./header";
 import Notice from "./notice";
 import Rail, { type EditorView } from "./rail";
+import type { CanvasView } from "./toolbar";
 import { conceptTitle, type OpenedBranch, useConceptSession } from "./session";
 
 interface ConceptEditorProps {
@@ -37,6 +38,8 @@ export default function ConceptEditor({
   const { concepts, activeConcept, activeBranch, sync } = session;
   const exploration = useExploration(session);
   const [view, setView] = useState<EditorView>("canvas");
+  /** The canvas or its Outline, kept as branches change. */
+  const [canvasView, setCanvasView] = useState<CanvasView>("canvas");
   const compare = useCompareReference(session, view === "compare");
   const [panelOpen, setPanelOpen] = useState(true);
   const [display, setDisplay] = useState<CanvasDisplay>({
@@ -56,6 +59,15 @@ export default function ConceptEditor({
     )
     .reverse();
   const togglePanel = useCallback(() => setPanelOpen((open) => !open), []);
+  const leftBranchId = compare.branchId;
+  // Opening the branch on the left and comparing back keeps Take This Version
+  // writing into the branch on the right.
+  const swapCompare = leftBranchId
+    ? () => {
+        compare.choose(activeBranch.id);
+        session.selectBranch(activeConcept.id, leftBranchId);
+      }
+    : undefined;
 
   /** A new branch starts ready to name, while the panel is there to name it. */
   function startNaming(branchId: string | undefined) {
@@ -122,7 +134,8 @@ export default function ConceptEditor({
           sync.leftOver > 0 ||
           importFailure !== null ||
           checkpointName !== null ||
-          branchFailed
+          branchFailed ||
+          exploration.notice !== null
         }
       >
         <EditorHeader
@@ -234,6 +247,7 @@ export default function ConceptEditor({
                   canUndo={activeBranch.editor.undoStack.length > 0}
                   canRedo={activeBranch.editor.redoStack.length > 0}
                   dispatch={session.dispatch}
+                  onSwap={swapCompare}
                   onClose={() => setView("canvas")}
                 />
               ) : (
@@ -244,6 +258,8 @@ export default function ConceptEditor({
                   branchTitle={activeBranch.title}
                   display={display}
                   onDisplayChange={setDisplay}
+                  view={canvasView}
+                  onViewChange={setCanvasView}
                   initialEditId={exploration.initialEditId}
                   onExplore={exploration.start}
                   explore={exploration.canvas}
@@ -327,6 +343,8 @@ export default function ConceptEditor({
           </form>
         </Notice>
       )}
+
+      {exploration.notice}
 
       {branchFailed && (
         <Notice

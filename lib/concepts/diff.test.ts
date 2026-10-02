@@ -33,14 +33,19 @@ function create(id: string, title: string): Operation {
   };
 }
 
-function link(id: string, source: string, target: string): Operation {
+function link(
+  id: string,
+  source: string,
+  target: string,
+  type: string | null = null,
+): Operation {
   return {
     type: "relationship/link",
     relationship: {
       id,
       sourceComponentId: source,
       targetComponentId: target,
-      type: null,
+      type,
     },
   };
 }
@@ -105,6 +110,28 @@ test("an added constraint flags what it constrains, and editing clears it", () =
   ]);
   expect(changes.edited).toEqual(new Set(["pricing"]));
   expect(connected).toEqual(new Set(["revenue", "hosting"]));
+});
+
+test("a change flags what depends on it, not what it depends on", () => {
+  const layered = applyOperations(empty, [
+    create("app", "Mobile app"),
+    create("api", "Sync API"),
+    create("db", "Postgres"),
+    link("d1", "app", "api", "depends on"),
+    link("d2", "api", "db", "depends on"),
+  ]).document;
+  const present = applyOperations(layered, [
+    {
+      type: "component/update",
+      id: "api",
+      field: "title",
+      value: "Sync API v2",
+    },
+  ]).document;
+
+  expect(
+    connectedToChanges(layered, present, componentChanges(layered, present)),
+  ).toEqual(new Set(["app"]));
 });
 
 function statuses(before: EditableConcept, after: EditableConcept) {

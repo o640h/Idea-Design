@@ -18,6 +18,8 @@ interface ConceptOutlineProps {
   editable: EditableConcept;
   dispatch: EditorDispatch;
   header: ReactNode;
+  /** Explores from a component, which happens on the canvas. */
+  onExplore: (id: ComponentId) => void;
 }
 
 /** A keyboard-first view of the same concept content shown on the canvas. */
@@ -25,6 +27,7 @@ export default function ConceptOutline({
   editable: { concept, componentLayouts },
   dispatch,
   header,
+  onExplore,
 }: ConceptOutlineProps) {
   const [newComponentId, setNewComponentId] = useState<ComponentId | null>(
     null,
@@ -86,6 +89,7 @@ export default function ConceptOutline({
               )}
               titles={titles}
               dispatch={dispatch}
+              onExplore={() => onExplore(component.id)}
               focusOnMount={component.id === newComponentId}
             />
           </li>
@@ -109,12 +113,14 @@ function OutlineItem({
   outgoing,
   titles,
   dispatch,
+  onExplore,
   focusOnMount,
 }: {
   component: ConceptComponent;
   outgoing: ConceptRelationship[];
   titles: Map<ComponentId, string>;
   dispatch: EditorDispatch;
+  onExplore: () => void;
   focusOnMount: boolean;
 }) {
   const titleRef = useRef<HTMLTextAreaElement>(null);
@@ -143,9 +149,12 @@ function OutlineItem({
             dispatch({ type: "component/tag", id: component.id, tag })
           }
         />
+        <button type="button" className="menu-item ml-auto" onClick={onExplore}>
+          Explore
+        </button>
         <button
           type="button"
-          className="menu-item ml-auto"
+          className="menu-item"
           onClick={() =>
             dispatch({ type: "component/delete", id: component.id })
           }
