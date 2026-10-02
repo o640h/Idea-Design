@@ -203,7 +203,7 @@ export default function ConceptPanel({
     <section
       id="concepts-panel"
       aria-label="Concepts"
-      className="hidden min-w-0 flex-1 flex-col md:flex"
+      className="hidden min-h-0 min-w-0 flex-1 flex-col overflow-y-auto md:flex"
       onContextMenu={(event) => {
         event.preventDefault();
         setContextMenu({
@@ -222,7 +222,7 @@ export default function ConceptPanel({
       {/* Lines up with the rail: the icons match its first button (10px
           down, 32px tall) and the divider falls in the gap below it. Equal
           side padding keeps the evenly spaced icons centred. */}
-      <div className="flex h-11 shrink-0 items-start justify-between border-b border-(--border-subtle) px-2.25 pt-2.5">
+      <div className="sticky top-0 z-10 flex h-11 shrink-0 items-start justify-between border-b border-(--border-subtle) bg-(--surface-shell) px-2.25 pt-2.5">
         <HeaderButton
           label="New Branch"
           Icon={FilePlusCorner}

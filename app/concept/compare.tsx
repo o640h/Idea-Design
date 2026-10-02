@@ -447,7 +447,7 @@ function Differences({
 
       {unchanged.length === components.length && changedConnections === 0 ? (
         <p className="mt-10 text-center text-ui text-(--text-tertiary)">
-          {currentTitle} matches {referenceTitle}.
+          No component or connection differences.
         </p>
       ) : (
         <>
@@ -603,6 +603,11 @@ export default function CompareView({
               </ul>
             )}
           </header>
+
+          <p className="mt-3 text-ui text-(--text-tertiary)">
+            Only components and connections are compared. Concept titles and
+            descriptions aren’t included.
+          </p>
 
           {!referenceTitle ? (
             <p className="mt-16 text-center text-ui text-(--text-tertiary)">

@@ -185,6 +185,14 @@ select:not(:disabled) {
 
 /* Concepts panel: the file square, and the tree line and dot of a branch.
    The line starts under the square's centre and stops just before the dot. */
+#concepts-panel {
+  scrollbar-width: none;
+}
+
+#concepts-panel::-webkit-scrollbar {
+  display: none;
+}
+
 .concept-icon {
   flex-shrink: 0;
   width: 9px;
