@@ -445,6 +445,153 @@ select:not(:disabled) {
   stroke-dasharray: 2 3;
 }
 
+/* Compare: what the branch on the right changed relative to the left. */
+.compare-view {
+  background: var(--surface-canvas);
+}
+
+.compare-branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  transition:
+    color 120ms ease,
+    border-color 120ms ease;
+}
+
+button.compare-branch:hover,
+.compare-branch.is-current {
+  color: var(--text-primary);
+}
+
+button.compare-branch:hover {
+  border-color: var(--border-strong);
+}
+
+.compare-dot {
+  flex-shrink: 0;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.compare-dot.is-muted {
+  background: var(--text-tertiary);
+}
+
+.compare-count {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: var(--text-ui);
+  color: var(--text-secondary);
+}
+
+.compare-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr);
+  align-items: stretch;
+  gap: 14px;
+}
+
+.compare-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.compare-list.is-unchanged {
+  opacity: 0.6;
+}
+
+.compare-fold {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 6px;
+  font-size: var(--text-ui);
+  color: var(--text-secondary);
+  white-space: pre;
+}
+
+.compare-card {
+  min-width: 0;
+  padding: 10px 14px 11px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-raised);
+}
+
+.compare-card.is-changed {
+  border-color: var(--accent-border);
+}
+
+.compare-card.is-absent {
+  border-style: dashed;
+  border-color: var(--border-strong);
+  background: transparent;
+}
+
+.compare-label {
+  flex-shrink: 0;
+  font-size: var(--text-small);
+  color: var(--text-secondary);
+}
+
+.compare-symbol {
+  display: grid;
+  align-self: center;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border: 1px solid var(--connector);
+  border-radius: 50%;
+  font-size: var(--text-ui);
+  line-height: 1;
+  color: var(--text-secondary);
+}
+
+.compare-symbol:empty {
+  border-color: transparent;
+}
+
+.compare-take {
+  display: block;
+  margin-top: 8px;
+  margin-left: auto;
+  padding: 3px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  font-size: var(--text-small);
+  font-weight: 500;
+  color: var(--text-tertiary);
+  transition:
+    color 120ms ease,
+    border-color 120ms ease,
+    background-color 120ms ease;
+}
+
+.compare-row:hover .compare-take,
+.compare-take:focus-visible {
+  color: var(--text-primary);
+  border-color: var(--text-tertiary);
+}
+
+.compare-take:hover {
+  background: var(--surface-control);
+}
+
 .explore-chip {
   display: flex;
   align-items: center;

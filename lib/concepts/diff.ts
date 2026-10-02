@@ -4,6 +4,96 @@ import type {
   ConceptRelationship,
   EditableConcept,
 } from "./model";
+import type { Operation } from "./operations";
+
+/** One item compared by ID: what it was and what it became. */
+export type Difference<T, F extends keyof T> =
+  | { status: "added"; id: string; after: T }
+  | { status: "removed"; id: string; before: T }
+  | { status: "changed"; id: string; before: T; after: T; fields: F[] }
+  | { status: "unchanged"; id: string; before: T; after: T };
+
+export type ComponentField = "title" | "description" | "tag" | "parentId";
+export type RelationshipField =
+  | "sourceComponentId"
+  | "targetComponentId"
+  | "type";
+
+const COMPONENT_FIELDS: ComponentField[] = [
+  "title",
+  "description",
+  "tag",
+  "parentId",
+];
+const RELATIONSHIP_FIELDS: RelationshipField[] = [
+  "sourceComponentId",
+  "targetComponentId",
+  "type",
+];
+
+/** In the order of `after`, then what was removed in the order of `before`. */
+function compareItems<T extends { id: string }, F extends keyof T>(
+  before: T[],
+  after: T[],
+  fields: F[],
+): Difference<T, F>[] {
+  const previous = new Map(before.map((item) => [item.id, item]));
+  const current = new Set(after.map(({ id }) => id));
+  const differences = after.map((item): Difference<T, F> => {
+    const old = previous.get(item.id);
+
+    if (!old) {
+      return { status: "added", id: item.id, after: item };
+    }
+
+    const changed = fields.filter((field) => old[field] !== item[field]);
+
+    return changed.length
+      ? {
+          status: "changed",
+          id: item.id,
+          before: old,
+          after: item,
+          fields: changed,
+        }
+      : { status: "unchanged", id: item.id, before: old, after: item };
+  });
+
+  return [
+    ...differences,
+    ...before
+      .filter(({ id }) => !current.has(id))
+      .map(
+        (item): Difference<T, F> => ({
+          status: "removed",
+          id: item.id,
+          before: item,
+        }),
+      ),
+  ];
+}
+
+/**
+ * How `after` differs from `before`, matching components and connections by
+ * ID. Layout is ignored, so moving or restyling a component changes nothing.
+ */
+export function compareConcepts(
+  before: EditableConcept,
+  after: EditableConcept,
+) {
+  return {
+    components: compareItems(
+      before.concept.components,
+      after.concept.components,
+      COMPONENT_FIELDS,
+    ),
+    relationships: compareItems(
+      before.concept.relationships,
+      after.concept.relationships,
+      RELATIONSHIP_FIELDS,
+    ),
+  };
+}
 
 /** How components differ from an earlier state, matched by ID. Layout is ignored. */
 export interface ComponentChanges {
@@ -12,44 +102,109 @@ export interface ComponentChanges {
   removed: Set<ComponentId>;
 }
 
-function sameContent(a: ConceptComponent, b: ConceptComponent) {
-  return (
-    a.title === b.title &&
-    a.description === b.description &&
-    a.tag === b.tag &&
-    a.parentId === b.parentId
-  );
-}
-
 export function componentChanges(
   base: EditableConcept,
   present: EditableConcept,
 ): ComponentChanges {
-  const before = new Map(base.concept.components.map((c) => [c.id, c]));
-  const after = new Map(present.concept.components.map((c) => [c.id, c]));
   const changes: ComponentChanges = {
     added: new Set(),
     edited: new Set(),
     removed: new Set(),
   };
+  const sets = {
+    added: changes.added,
+    changed: changes.edited,
+    removed: changes.removed,
+  };
 
-  for (const [id, component] of after) {
-    const previous = before.get(id);
-
-    if (!previous) {
-      changes.added.add(id);
-    } else if (!sameContent(previous, component)) {
-      changes.edited.add(id);
-    }
-  }
-
-  for (const id of before.keys()) {
-    if (!after.has(id)) {
-      changes.removed.add(id);
+  for (const { status, id } of compareConcepts(base, present).components) {
+    if (status !== "unchanged") {
+      sets[status].add(id);
     }
   }
 
   return changes;
+}
+
+/**
+ * The operations that make a component in `current` match its version in
+ * `reference`, restoring it with its connections if `current` removed it.
+ * Nothing is taken for a component `reference` does not have.
+ */
+export function takeVersion(
+  reference: EditableConcept,
+  current: EditableConcept,
+  id: ComponentId,
+): Operation[] {
+  const theirs = reference.concept.components.find((c) => c.id === id);
+  const ours = current.concept.components.find((c) => c.id === id);
+  const existing = new Set(current.concept.components.map((c) => c.id));
+  // Nesting under a component this branch no longer has would orphan it.
+  const parentId =
+    theirs?.parentId && existing.has(theirs.parentId) ? theirs.parentId : null;
+
+  if (!theirs) {
+    return [];
+  }
+
+  if (ours) {
+    const operations: Operation[] = [];
+
+    for (const field of ["title", "description"] as const) {
+      if (ours[field] !== theirs[field]) {
+        operations.push({
+          type: "component/update",
+          id,
+          field,
+          value: theirs[field],
+        });
+      }
+    }
+
+    if (ours.tag !== theirs.tag) {
+      operations.push({ type: "component/tag", id, tag: theirs.tag });
+    }
+
+    if (ours.parentId !== parentId) {
+      operations.push({ type: "component/nest", id, parentId });
+    }
+
+    return operations;
+  }
+
+  const layout = reference.componentLayouts.find((l) => l.componentId === id);
+  const linked = new Set(current.concept.relationships.map((r) => r.id));
+
+  if (!layout) {
+    return [];
+  }
+
+  return [
+    {
+      type: "component/create",
+      component: { ...theirs, parentId } satisfies ConceptComponent,
+      layout,
+    },
+    ...reference.concept.relationships
+      .filter(
+        (relationship) =>
+          !linked.has(relationship.id) &&
+          [
+            relationship.sourceComponentId,
+            relationship.targetComponentId,
+          ].includes(id) &&
+          [
+            relationship.sourceComponentId,
+            relationship.targetComponentId,
+          ].every((end) => end === id || existing.has(end)),
+      )
+      .map(
+        (relationship): Operation => ({
+          type: "relationship/link",
+          relationship,
+        }),
+      ),
+  ];
 }
 
 /**

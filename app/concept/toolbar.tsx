@@ -15,7 +15,7 @@ export function animationDuration() {
     : 250;
 }
 
-function ToolbarButton({
+export function ToolbarButton({
   label,
   hint,
   children,

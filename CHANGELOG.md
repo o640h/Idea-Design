@@ -49,6 +49,9 @@ Notable changes to Idea Design are recorded here.
 - Explore from a selected component: Substitute, Constrain or Remove it in
   branches of their own, see changes marked and connected components boxed for
   review, then keep the branches with Done or archive them with Discard or Esc.
+- Compare a branch side by side with another branch or with where it started,
+  matched by ID with layout ignored, unchanged content folded, and Take This
+  Version to copy a component's version across as an undoable change.
 - Name each rail view and its shortcut in a tooltip; Alt+1 toggles the Concepts
   panel and Ctrl+, opens Settings.
 - Raise text people read to at least 11px with 4.5:1 contrast.

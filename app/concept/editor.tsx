@@ -52,6 +52,7 @@ import {
 } from "@/lib/concepts/transfer";
 import { createClient } from "@/lib/supabase/client";
 import ConceptCanvas, { type CanvasDisplay } from "./canvas";
+import CompareView, { type CompareOption } from "./compare";
 import ConceptPanel from "./concept_panel";
 import {
   type Exploration,
@@ -92,7 +93,7 @@ const Compare = createLucideIcon("compare", [
   ],
 ]);
 
-/** Views still to come; their shortcuts are reserved in rail order. */
+/** Views after Concepts; those still to come keep their shortcuts reserved. */
 const navigationItems = [
   { label: "Search", Icon: Search, key: "2" },
   { label: "Lineage", Icon: Lineage, key: "3" },
@@ -252,6 +253,13 @@ export default function ConceptEditor({
   const [checkpointName, setCheckpointName] = useState<string | null>(null);
   const [renamingBranchId, setRenamingBranchId] = useState<string | null>(null);
   const [exploration, setExploration] = useState<Exploration | null>(null);
+  const [mainView, setMainView] = useState<"canvas" | "compare">("canvas");
+  /** What Compare shows on the left: a branch, or a branch's source revision. */
+  const [compareWith, setCompareWith] = useState<string | null>(null);
+  /** Documents at source revisions, which never change once saved. */
+  const [startDocuments, setStartDocuments] = useState<
+    Record<string, EditableConcept | "failed">
+  >({});
   /** A component to start editing once its branch opens. */
   const [initialEdit, setInitialEdit] = useState<{
     branchId: string;
@@ -281,6 +289,75 @@ export default function ConceptEditor({
     ?.editor?.present.concept.components.find(
       ({ id }) => id === exploration?.componentId,
     );
+
+  const sourceRevision = activeConcept.revisions?.find(
+    ({ id }) => id === activeBranch.sourceRevisionId,
+  );
+  const parentBranch = activeConcept.branches.find(
+    ({ id, archivedAt }) => id === sourceRevision?.branchId && !archivedAt,
+  );
+  const compareOptions: CompareOption[] = [
+    ...(activeBranch.sourceRevisionId
+      ? [
+          {
+            id: activeBranch.sourceRevisionId,
+            title: "Where It Started",
+            note: parentBranch && `In ${parentBranch.title}`,
+          },
+        ]
+      : []),
+    ...activeConcept.branches
+      .filter(({ id, archivedAt }) => id !== activeBranch.id && !archivedAt)
+      .map(({ id, title }) => ({
+        id,
+        title,
+        note: id === parentBranch?.id ? "Parent" : undefined,
+      })),
+  ];
+  // The parent by default: how this branch differs from where it came from.
+  const compareId =
+    compareOptions.find(({ id }) => id === compareWith)?.id ??
+    parentBranch?.id ??
+    compareOptions[0]?.id ??
+    null;
+  const compareBranch = activeConcept.branches.find(
+    ({ id }) => id === compareId,
+  );
+  const compareDocument = compareBranch
+    ? (compareBranch.editor?.present ?? null)
+    : compareId
+      ? (startDocuments[compareId] ?? null)
+      : null;
+
+  // Loads what Compare shows on the left the first time it is needed.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: loading depends only on what is compared; load and sync read the latest state themselves
+  useEffect(() => {
+    if (mainView !== "compare" || !compareId || compareDocument) {
+      return;
+    }
+
+    if (compareBranch) {
+      void load(activeConcept, compareId);
+      return;
+    }
+
+    void (async () => {
+      try {
+        // A new branch's source revision may still be on its way. Sending
+        // flushes React updates, which cannot happen during an effect.
+        await new Promise((resolve) => window.setTimeout(resolve));
+        await sync.flush();
+        const document = await revisionDocument(createClient(), compareId, {
+          conceptId: activeConcept.id,
+          workspaceId: workspace.id,
+        });
+        setStartDocuments((current) => ({ ...current, [compareId]: document }));
+      } catch (error) {
+        console.warn("Could not load where the branch started", error);
+        setStartDocuments((current) => ({ ...current, [compareId]: "failed" }));
+      }
+    })();
+  }, [mainView, compareId, compareDocument]);
 
   // Opening any other branch keeps what was explored and stops exploring.
   if (
@@ -409,6 +486,11 @@ export default function ConceptEditor({
     }
   }
 
+  const toggleCompare = useCallback(
+    () => setMainView((view) => (view === "compare" ? "canvas" : "compare")),
+    [],
+  );
+
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (isTyping(event.target)) {
@@ -425,6 +507,14 @@ export default function ConceptEditor({
       ) {
         event.preventDefault();
         setPanelOpen((open) => !open);
+      } else if (
+        event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        event.code === "Digit4"
+      ) {
+        event.preventDefault();
+        toggleCompare();
       } else if (command && !event.altKey && event.key === ",") {
         event.preventDefault();
         settingsRef.current?.querySelector("button")?.click();
@@ -433,7 +523,7 @@ export default function ConceptEditor({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [toggleCompare]);
 
   function updateBranch(
     conceptId: ConceptId,
@@ -956,14 +1046,19 @@ export default function ConceptEditor({
                     id={`rail-${key}`}
                     label={label}
                     shortcut={shortcuts.view(key)}
-                    available={false}
+                    available={label === "Compare"}
                   >
                     <button
                       type="button"
                       aria-label={label}
                       aria-describedby={`rail-${key}`}
-                      disabled
-                      className="flex h-8 w-full shrink-0 items-center justify-center rounded-md bg-(--surface-idle)"
+                      aria-keyshortcuts={`Alt+${key}`}
+                      aria-pressed={
+                        label === "Compare" ? mainView === "compare" : undefined
+                      }
+                      disabled={label !== "Compare"}
+                      onClick={toggleCompare}
+                      className="flex h-8 w-full shrink-0 items-center justify-center rounded-md bg-(--surface-idle) transition-colors enabled:hover:bg-(--surface-shell) aria-pressed:bg-(--surface-shell)"
                     >
                       <Icon {...railIconProps} />
                     </button>
@@ -1069,65 +1164,85 @@ export default function ConceptEditor({
             className="min-w-0 flex-1 overflow-hidden rounded-l-xl border-l border-(--border-subtle) bg-(--surface-canvas)"
             aria-label="Concept Editor"
           >
-            {activeBranch.editor && (
-              <ConceptCanvas
-                key={activeBranch.id}
-                state={activeBranch.editor}
+            {activeBranch.editor && mainView === "compare" ? (
+              <CompareView
+                currentTitle={activeBranch.title}
+                current={activeBranch.editor.present}
+                options={compareOptions}
+                referenceId={compareId}
+                reference={compareDocument}
+                onReferenceChange={setCompareWith}
+                onRetry={() =>
+                  setStartDocuments(
+                    ({ [compareId ?? ""]: _failed, ...loaded }) => loaded,
+                  )
+                }
+                canUndo={activeBranch.editor.undoStack.length > 0}
+                canRedo={activeBranch.editor.redoStack.length > 0}
                 dispatch={dispatch}
-                branchTitle={activeBranch.title}
-                display={display}
-                onDisplayChange={setDisplay}
-                initialEditId={
-                  initialEdit?.branchId === activeBranch.id
-                    ? initialEdit.componentId
-                    : null
-                }
-                onExplore={startExploring}
-                explore={
-                  exploration && {
-                    base: exploredBranch?.base ?? null,
-                    reviewed: exploredBranch?.reviewed ?? [],
-                    available: Boolean(exploredComponent),
-                    chip: (
-                      <ExploreChip
-                        componentTitle={exploredComponent?.title ?? ""}
-                        origin={{
-                          id: exploration.originBranchId,
-                          title:
-                            activeConcept.branches.find(
-                              ({ id }) => id === exploration.originBranchId,
-                            )?.title ?? "",
-                        }}
-                        branches={activeConcept.branches.filter(({ id }) =>
-                          exploration.branches.some(
-                            (branch) => branch.id === id,
-                          ),
-                        )}
-                        activeBranchId={activeBranch.id}
-                        onSelect={(branchId) =>
-                          selectBranch(exploration.conceptId, branchId)
-                        }
-                        onDiscard={discardExploration}
-                        onDone={() => setExploration(null)}
-                      />
-                    ),
-                    onTool: exploreWith,
-                    onReviewed: (componentId) =>
-                      setExploration({
-                        ...exploration,
-                        branches: exploration.branches.map((branch) =>
-                          branch.id === activeBranch.id
-                            ? {
-                                ...branch,
-                                reviewed: [...branch.reviewed, componentId],
-                              }
-                            : branch,
-                        ),
-                      }),
-                    onDiscard: discardExploration,
-                  }
-                }
+                onClose={() => setMainView("canvas")}
               />
+            ) : (
+              activeBranch.editor && (
+                <ConceptCanvas
+                  key={activeBranch.id}
+                  state={activeBranch.editor}
+                  dispatch={dispatch}
+                  branchTitle={activeBranch.title}
+                  display={display}
+                  onDisplayChange={setDisplay}
+                  initialEditId={
+                    initialEdit?.branchId === activeBranch.id
+                      ? initialEdit.componentId
+                      : null
+                  }
+                  onExplore={startExploring}
+                  explore={
+                    exploration && {
+                      base: exploredBranch?.base ?? null,
+                      reviewed: exploredBranch?.reviewed ?? [],
+                      available: Boolean(exploredComponent),
+                      chip: (
+                        <ExploreChip
+                          componentTitle={exploredComponent?.title ?? ""}
+                          origin={{
+                            id: exploration.originBranchId,
+                            title:
+                              activeConcept.branches.find(
+                                ({ id }) => id === exploration.originBranchId,
+                              )?.title ?? "",
+                          }}
+                          branches={activeConcept.branches.filter(({ id }) =>
+                            exploration.branches.some(
+                              (branch) => branch.id === id,
+                            ),
+                          )}
+                          activeBranchId={activeBranch.id}
+                          onSelect={(branchId) =>
+                            selectBranch(exploration.conceptId, branchId)
+                          }
+                          onDiscard={discardExploration}
+                          onDone={() => setExploration(null)}
+                        />
+                      ),
+                      onTool: exploreWith,
+                      onReviewed: (componentId) =>
+                        setExploration({
+                          ...exploration,
+                          branches: exploration.branches.map((branch) =>
+                            branch.id === activeBranch.id
+                              ? {
+                                  ...branch,
+                                  reviewed: [...branch.reviewed, componentId],
+                                }
+                              : branch,
+                          ),
+                        }),
+                      onDiscard: discardExploration,
+                    }
+                  }
+                />
+              )
             )}
           </main>
         </div>

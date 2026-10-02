@@ -180,18 +180,18 @@ current session state.
 
 ### 3.3 Compare Branches Side by Side
 
-- [ ] Compare components and relationships by stable ID, including changed
+- [x] Compare components and relationships by stable ID, including changed
   relationship types and endpoints.
-- [ ] Identify added, removed, edited and re-parented content; ignore layout
+- [x] Identify added, removed, edited and re-parented content; ignore layout
   operations.
-- [ ] Keep the comparison deterministic. Generated summaries of what changed
+- [x] Keep the comparison deterministic. Generated summaries of what changed
   come later (10.2) and never replace the structural diff.
-- [ ] Show before-and-after values, with unchanged content folded and
+- [x] Show before-and-after values, with unchanged content folded and
   available on demand.
-- [ ] Compare against the divergence revision as well as the current branch.
-- [ ] Let users copy one component's version from the other branch with
+- [x] Compare against the divergence revision as well as the current branch.
+- [x] Let users copy one component's version from the other branch with
   Take This Version, as an ordinary undoable operation.
-- [ ] Test isolation and comparison after renaming, moving or removing
+- [x] Test isolation and comparison after renaming, moving or removing
   components.
 
 ### 3.4 Test Branch and Compare

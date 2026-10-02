@@ -1,5 +1,11 @@
 import { expect, test } from "vitest";
-import { componentChanges, connectedToChanges } from "./diff";
+import {
+  compareConcepts,
+  componentChanges,
+  connectedToChanges,
+  takeVersion,
+} from "./diff";
+import { createEditorState, editorReducer } from "./editor";
 import {
   createComponent,
   createComponentLayout,
@@ -99,4 +105,93 @@ test("an added constraint flags what it constrains, and editing clears it", () =
   ]);
   expect(changes.edited).toEqual(new Set(["pricing"]));
   expect(connected).toEqual(new Set(["revenue", "hosting"]));
+});
+
+function statuses(before: EditableConcept, after: EditableConcept) {
+  const { components, relationships } = compareConcepts(before, after);
+  return Object.fromEntries(
+    [...components, ...relationships].map((difference) => [
+      difference.id,
+      difference.status === "changed"
+        ? difference.fields.join(",")
+        : difference.status,
+    ]),
+  );
+}
+
+test("branches compare by ID after renaming, moving and removing", () => {
+  const branch = applyOperations(base, [
+    {
+      type: "component/update",
+      id: "pricing",
+      field: "title",
+      value: "Per seat",
+    },
+    { type: "component/move", id: "goal", position: { x: 300, y: 300 } },
+    { type: "component/nest", id: "revenue", parentId: "goal" },
+    { type: "component/delete", id: "hosting" },
+    { type: "relationship/update", id: "r1", field: "type", value: "funds" },
+    create("presence", "Real-time presence"),
+  ]).document;
+
+  expect(statuses(base, branch)).toEqual({
+    pricing: "title",
+    goal: "unchanged",
+    revenue: "parentId",
+    hosting: "removed",
+    presence: "added",
+    r1: "type",
+    r2: "removed",
+  });
+});
+
+test("editing one branch leaves its parent and siblings unchanged", () => {
+  const parent = createEditorState(base);
+  const sibling = createEditorState(parent.present);
+  const edited = editorReducer(createEditorState(parent.present), {
+    type: "component/delete",
+    id: "pricing",
+  });
+
+  expect(statuses(base, edited.present).pricing).toBe("removed");
+
+  for (const untouched of [parent, sibling]) {
+    expect(new Set(Object.values(statuses(base, untouched.present)))).toEqual(
+      new Set(["unchanged"]),
+    );
+  }
+});
+
+test("taking a version makes the component match, and undoing restores it", () => {
+  const branch = applyOperations(base, [
+    {
+      type: "component/update",
+      id: "pricing",
+      field: "title",
+      value: "Per seat",
+    },
+    { type: "component/tag", id: "pricing", tag: "mechanism" },
+    { type: "component/delete", id: "revenue" },
+    { type: "component/delete", id: "hosting" },
+  ]).document;
+
+  const changed = applyOperations(branch, takeVersion(base, branch, "pricing"));
+  expect(statuses(base, changed.document).pricing).toBe("unchanged");
+
+  // Revenue comes back linked to Pricing, but not to Hosting, which is gone.
+  const restored = applyOperations(
+    branch,
+    takeVersion(base, branch, "revenue"),
+  );
+  const result = statuses(base, restored.document);
+  expect([result.revenue, result.r1, result.r2]).toEqual([
+    "unchanged",
+    "unchanged",
+    "removed",
+  ]);
+
+  expect(applyOperations(restored.document, restored.inverse).document).toEqual(
+    branch,
+  );
+  expect(takeVersion(branch, base, "goal")).toEqual([]);
 });
