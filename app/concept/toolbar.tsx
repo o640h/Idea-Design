@@ -34,7 +34,7 @@ function ToolbarButton({
       aria-pressed={pressed}
       disabled={disabled}
       onClick={onClick}
-      className="flex h-6 items-center gap-1 rounded-sm px-1.5 text-ui font-medium text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-primary)] disabled:opacity-40 disabled:hover:text-[var(--text-tertiary)] aria-pressed:text-[var(--text-primary)]"
+      className="flex h-6 items-center gap-1 rounded-sm px-1.5 text-ui font-medium text-(--text-tertiary) transition-colors hover:text-(--text-primary) disabled:opacity-40 disabled:hover:text-(--text-tertiary) aria-pressed:text-(--text-primary)"
     >
       {children}
     </button>
@@ -64,14 +64,14 @@ export default function BottomBar({
     <div
       role="toolbar"
       aria-label="Canvas Tools"
-      className="absolute bottom-[34px] left-1/2 z-10 flex -translate-x-1/2 items-center gap-2.5 border-b border-[var(--border-underline)] px-1 pb-2"
+      className="absolute bottom-8.5 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2.5 border-b border-(--border-underline) px-1 pb-2"
     >
       {view === "canvas" && (
         <>
           <button
             type="button"
             onClick={onAdd}
-            className="flex h-6 items-center gap-1.5 rounded-md bg-[var(--surface-control)] px-2.5 text-ui font-medium text-[var(--text-tertiary)] transition-[color,background-color,translate,scale,box-shadow] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-[var(--surface-active)] hover:text-[var(--text-primary)] motion-safe:hover:-translate-y-px motion-safe:hover:shadow-[0_3px_8px_rgb(0_0_0/0.35)] motion-safe:active:translate-y-0 motion-safe:active:scale-[0.96] motion-safe:active:shadow-none motion-safe:active:duration-75"
+            className="flex h-6 items-center gap-1.5 rounded-md bg-(--surface-control) px-2.5 text-ui font-medium text-(--text-tertiary) transition-[color,background-color,translate,scale,box-shadow] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-(--surface-active) hover:text-(--text-primary) motion-safe:hover:-translate-y-px motion-safe:hover:shadow-[0_3px_8px_rgb(0_0_0/0.35)] motion-safe:active:translate-y-0 motion-safe:active:scale-[0.96] motion-safe:active:shadow-none motion-safe:active:duration-75"
           >
             <Plus aria-hidden="true" size={10} strokeWidth={1.5} />
             Add
@@ -135,7 +135,7 @@ function ZoomMenu() {
           <ChevronDown aria-hidden="true" size={10} />
         </>
       }
-      triggerClassName="flex h-6 items-center gap-0.5 text-ui font-medium text-[var(--text-tertiary)] tabular-nums transition-colors hover:text-[var(--text-primary)]"
+      triggerClassName="flex h-6 items-center gap-0.5 text-ui font-medium text-(--text-tertiary) tabular-nums transition-colors hover:text-(--text-primary)"
     >
       {(close) =>
         ZOOM_LEVELS.map((level) => (

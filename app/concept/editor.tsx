@@ -5,6 +5,7 @@ import {
   Check,
   ChevronDown,
   createLucideIcon,
+  Flag,
   Plus,
   RotateCcwClock,
   Search,
@@ -24,7 +25,10 @@ import {
 import {
   type ConceptSummary,
   emptyConcept,
+  listRevisions,
   loadEditor,
+  type Revision,
+  revisionDocument,
 } from "@/lib/concepts/database";
 import {
   type ChangeOptions,
@@ -33,7 +37,11 @@ import {
   type EditorState,
   editorReducer,
 } from "@/lib/concepts/editor";
-import type { ConceptId, Workspace } from "@/lib/concepts/model";
+import type {
+  ConceptId,
+  EditableConcept,
+  Workspace,
+} from "@/lib/concepts/model";
 import type { Operation } from "@/lib/concepts/operations";
 import {
   exportConcept,
@@ -49,6 +57,7 @@ import {
   type SaveStatus,
   type SessionBranch,
   type SessionConcept,
+  updateEditors,
   useSync,
 } from "./sync";
 
@@ -137,15 +146,20 @@ const railIconProps = {
   "aria-hidden": true,
   size: 15,
   strokeWidth: 1.5,
-  className: "text-[var(--text-rail)]",
+  className: "text-(--text-rail)",
 } as const;
 
 interface ConceptEditorProps {
   workspace: Workspace;
   email: string | undefined;
   concepts: ConceptSummary[];
-  /** The concept to open first, already loaded on the server. */
-  opened: { id: ConceptId; editor: EditorState };
+  /** The branch to open first, already loaded on the server. */
+  opened: {
+    id: ConceptId;
+    branchId: string;
+    editor: EditorState;
+    revisions: Revision[];
+  };
 }
 
 function newConcept(
@@ -153,23 +167,25 @@ function newConcept(
   operations: Operation[],
 ): SessionConcept {
   const id = crypto.randomUUID();
-  const mainBranchId = crypto.randomUUID();
 
   return {
     id,
     title: "",
     deletedAt: null,
-    mainBranchId,
     branches: [
       {
-        id: mainBranchId,
+        id: crypto.randomUUID(),
         title: "Main",
+        main: true,
+        archivedAt: null,
+        sourceRevisionId: null,
         editor: editorReducer(
           createEditorState(emptyConcept(id, workspace.id)),
           { type: "change", operations },
         ),
       },
     ],
+    revisions: [],
   };
 }
 
@@ -184,7 +200,13 @@ function updateConcept(
 }
 
 function conceptTitle(concept: SessionConcept) {
-  return concept.branches?.[0].editor.present.concept.title ?? concept.title;
+  return concept.branches[0].editor?.present.concept.title ?? concept.title;
+}
+
+function setCookie(name: string, value: string) {
+  // Read on the server, so the next visit opens this branch straight away.
+  // biome-ignore lint/suspicious/noDocumentCookie: the Cookie Store API is not in every supported browser
+  document.cookie = `${name}=${value}; path=/; max-age=31536000; samesite=lax`;
 }
 
 export default function ConceptEditor({
@@ -197,16 +219,15 @@ export default function ConceptEditor({
   const [concepts, setConcepts] = useState<SessionConcept[]>(() =>
     summaries.map((summary) => ({
       ...summary,
-      branches:
-        summary.id === opened.id
-          ? [{ id: summary.mainBranchId, title: "Main", editor: opened.editor }]
-          : null,
+      branches: summary.branches.map((branch) => ({
+        ...branch,
+        editor: branch.id === opened.branchId ? opened.editor : null,
+      })),
+      revisions: summary.id === opened.id ? opened.revisions : null,
     })),
   );
   const [activeId, setActiveId] = useState(opened.id);
-  const [activeBranchId, setActiveBranchId] = useState(
-    () => summaries.find(({ id }) => id === opened.id)?.mainBranchId ?? "",
-  );
+  const [activeBranchId, setActiveBranchId] = useState(opened.branchId);
   const [panelOpen, setPanelOpen] = useState(true);
   const settingsRef = useRef<HTMLSpanElement>(null);
   const isMac = useIsMac();
@@ -219,74 +240,79 @@ export default function ConceptEditor({
     labels: true,
   });
   const [importFailure, setImportFailure] = useState<string | null>(null);
-  const [branchToDelete, setBranchToDelete] = useState<{
-    conceptId: ConceptId;
-    branch: { id: string; title: string };
-  } | null>(null);
-  const loading = useRef(new Set<ConceptId>());
+  const [branchFailed, setBranchFailed] = useState(false);
+  /** The new checkpoint's name while it is being chosen. */
+  const [checkpointName, setCheckpointName] = useState<string | null>(null);
+  const [renamingBranchId, setRenamingBranchId] = useState<string | null>(null);
+  const loading = useRef(new Set<string>());
   const sync = useSync(concepts, setConcepts);
 
   const activeConcept =
     concepts.find((concept) => concept.id === activeId) ?? concepts[0];
   const activeBranch =
-    activeConcept.branches?.find((branch) => branch.id === activeBranchId) ??
-    activeConcept.branches?.[0];
+    activeConcept.branches.find((branch) => branch.id === activeBranchId) ??
+    activeConcept.branches[0];
+  const checkpoints = (activeConcept.revisions ?? [])
+    .filter(
+      ({ branchId, kind }) =>
+        branchId === activeBranch.id && kind === "checkpoint",
+    )
+    .reverse();
   const liveConcepts = concepts.filter(({ deletedAt }) => !deletedAt);
 
   const dispatchTo = useCallback(
-    (
-      id: ConceptId,
-      action: EditorAction,
-      branchId?: string,
-      options?: ChangeOptions,
-    ) =>
+    (branchId: string, action: EditorAction, options?: ChangeOptions) =>
       setConcepts((current) =>
-        updateConcept(current, id, (concept) => ({
-          ...concept,
-          branches:
-            concept.branches?.map((branch) =>
-              !branchId || branch.id === branchId
-                ? {
-                    ...branch,
-                    editor: editorReducer(branch.editor, action, options),
-                  }
-                : branch,
-            ) ?? null,
-        })),
+        updateEditors(current, action, branchId, options),
       ),
     [],
   );
   const dispatch = useCallback(
     (action: EditorAction, options?: ChangeOptions) =>
-      dispatchTo(activeId, action, activeBranchId, options),
-    [dispatchTo, activeId, activeBranchId],
+      dispatchTo(activeBranchId, action, options),
+    [dispatchTo, activeBranchId],
   );
 
-  /** Opens a concept from the server the first time it is needed. */
-  async function load(concept: SessionConcept) {
-    if (concept.branches) {
-      return concept.branches[0].editor;
+  /** Opens a branch from the server the first time it is needed. */
+  async function load(
+    concept: SessionConcept,
+    branchId = concept.branches[0].id,
+  ) {
+    const branch = concept.branches.find(({ id }) => id === branchId);
+
+    if (!branch || branch.editor) {
+      return branch?.editor;
     }
 
-    if (loading.current.has(concept.id)) {
+    if (loading.current.has(branchId)) {
       return;
     }
 
-    loading.current.add(concept.id);
+    loading.current.add(branchId);
 
     try {
-      const editor = await loadEditor(createClient(), concept, workspace.id);
+      const supabase = createClient();
+      const [editor, revisions] = await Promise.all([
+        loadEditor(supabase, branchId, {
+          conceptId: concept.id,
+          workspaceId: workspace.id,
+        }),
+        concept.revisions ?? listRevisions(supabase, concept.id),
+      ]);
       setConcepts((current) =>
         updateConcept(current, concept.id, (loaded) => ({
           ...loaded,
-          branches: loaded.branches ?? [
-            { id: concept.mainBranchId, title: "Main", editor },
-          ],
+          branches: loaded.branches.map((candidate) =>
+            candidate.id === branchId
+              ? { ...candidate, editor: candidate.editor ?? editor }
+              : candidate,
+          ),
+          revisions: loaded.revisions ?? revisions,
         })),
       );
       return editor;
     } finally {
-      loading.current.delete(concept.id);
+      loading.current.delete(branchId);
     }
   }
 
@@ -295,12 +321,11 @@ export default function ConceptEditor({
 
     setActiveId(conceptId);
     setActiveBranchId(branchId);
-    // Read on the server, so the next visit opens this concept straight away.
-    // biome-ignore lint/suspicious/noDocumentCookie: the Cookie Store API is not in every supported browser
-    document.cookie = `last_concept=${conceptId}; path=/; max-age=31536000; samesite=lax`;
+    setCookie("last_concept", conceptId);
+    setCookie("last_branch", branchId);
 
     if (concept) {
-      void load(concept);
+      void load(concept, branchId);
     }
   }
 
@@ -312,10 +337,10 @@ export default function ConceptEditor({
       id: crypto.randomUUID(),
       conceptId: concept.id,
       workspaceId: workspace.id,
-      branchId: concept.mainBranchId,
+      branchId: concept.branches[0].id,
     });
     setConcepts((current) => [...current, concept]);
-    selectBranch(concept.id, concept.mainBranchId);
+    selectBranch(concept.id, concept.branches[0].id);
   }
 
   async function downloadConcept(id: ConceptId) {
@@ -377,28 +402,159 @@ export default function ConceptEditor({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  function createBranch() {
-    const main = activeConcept.branches?.[0].editor;
+  function updateBranch(
+    conceptId: ConceptId,
+    branchId: string,
+    changes: Partial<SessionBranch>,
+  ) {
+    setConcepts((current) =>
+      updateConcept(current, conceptId, (concept) => ({
+        ...concept,
+        branches: concept.branches.map((branch) =>
+          branch.id === branchId ? { ...branch, ...changes } : branch,
+        ),
+      })),
+    );
+  }
 
-    if (!main) {
+  /**
+   * Adds a branch that starts from a revision and opens it, ready to name.
+   * The parent named by `sealing` stops merging edits into its pending
+   * change, so later edits there are not saved before the revision.
+   */
+  function addBranch(
+    concept: SessionConcept,
+    sourceRevisionId: string,
+    editor: EditorState,
+    sealing?: { parentId: string; revision: Revision },
+  ) {
+    const branch: SessionBranch = {
+      id: crypto.randomUUID(),
+      title: `Alternative ${concept.branches.length}`,
+      main: false,
+      archivedAt: null,
+      sourceRevisionId,
+      editor,
+    };
+
+    sync.enqueue({
+      kind: "branch",
+      id: crypto.randomUUID(),
+      branchId: branch.id,
+      conceptId: concept.id,
+      title: branch.title,
+      sourceRevisionId,
+    });
+    setConcepts((current) =>
+      updateConcept(
+        sealing
+          ? updateEditors(current, { type: "sync/seal" }, sealing.parentId)
+          : current,
+        concept.id,
+        (latest) => ({
+          ...latest,
+          branches: [...latest.branches, branch],
+          revisions: sealing
+            ? [...(latest.revisions ?? []), sealing.revision]
+            : latest.revisions,
+        }),
+      ),
+    );
+    selectBranch(concept.id, branch.id);
+
+    if (panelOpen) {
+      setRenamingBranchId(branch.id);
+    }
+  }
+
+  /** Branches from what a branch shows now, unsaved edits included. */
+  async function branchFrom(conceptId: ConceptId, parentId: string) {
+    const concept = concepts.find(({ id }) => id === conceptId);
+    const parent = concept && (await load(concept, parentId));
+
+    if (!concept || !parent) {
       return;
     }
 
-    const branch: SessionBranch = {
+    const revision: Revision = {
       id: crypto.randomUUID(),
-      title: `Alternative ${activeConcept.branches?.length}`,
-      editor: {
-        ...createEditorState(structuredClone(main.present)),
-        viewport: main.viewport,
-      },
+      branchId: parentId,
+      kind: "branch",
+      title: null,
+      createdAt: new Date().toISOString(),
     };
-    setConcepts((current) =>
-      updateConcept(current, activeConcept.id, (concept) => ({
-        ...concept,
-        branches: [...(concept.branches ?? []), branch],
-      })),
+
+    // The server places the revision at the parent's head once this tab's
+    // earlier edits are saved, so the branch starts from what is shown here.
+    sync.enqueue({
+      kind: "revision",
+      id: crypto.randomUUID(),
+      revisionId: revision.id,
+      branchId: parentId,
+      revisionKind: "branch",
+      title: null,
+    });
+    addBranch(
+      concept,
+      revision.id,
+      { ...createEditorState(parent.present), viewport: parent.viewport },
+      { parentId, revision },
     );
-    selectBranch(activeConcept.id, branch.id);
+  }
+
+  async function branchFromCheckpoint(revision: Revision) {
+    const concept = activeConcept;
+    const viewport = activeBranch.editor?.viewport;
+    let document: EditableConcept;
+
+    try {
+      // The checkpoint may still be on its way to the server.
+      await sync.flush();
+      document = await revisionDocument(createClient(), revision.id, {
+        conceptId: concept.id,
+        workspaceId: workspace.id,
+      });
+    } catch (error) {
+      console.warn("Could not branch from checkpoint", error);
+      setBranchFailed(true);
+      return;
+    }
+
+    const editor = createEditorState(document);
+    addBranch(
+      concept,
+      revision.id,
+      viewport ? { ...editor, viewport } : editor,
+    );
+  }
+
+  function saveCheckpoint(title: string) {
+    const revision: Revision = {
+      id: crypto.randomUUID(),
+      branchId: activeBranch.id,
+      kind: "checkpoint",
+      title,
+      createdAt: new Date().toISOString(),
+    };
+
+    sync.enqueue({
+      kind: "revision",
+      id: crypto.randomUUID(),
+      revisionId: revision.id,
+      branchId: revision.branchId,
+      revisionKind: "checkpoint",
+      title,
+    });
+    setConcepts((current) =>
+      updateConcept(
+        updateEditors(current, { type: "sync/seal" }, revision.branchId),
+        activeConcept.id,
+        (concept) => ({
+          ...concept,
+          revisions: [...(concept.revisions ?? []), revision],
+        }),
+      ),
+    );
   }
 
   function renameConcept(id: ConceptId, title: string) {
@@ -406,7 +562,7 @@ export default function ConceptEditor({
 
     if (concept) {
       void load(concept).then(() =>
-        dispatchTo(id, {
+        dispatchTo(concept.branches[0].id, {
           type: "concept/update",
           field: "title",
           value: title,
@@ -416,30 +572,43 @@ export default function ConceptEditor({
   }
 
   function renameBranch(conceptId: ConceptId, branchId: string, title: string) {
-    setConcepts((current) =>
-      updateConcept(current, conceptId, (concept) => ({
-        ...concept,
-        branches:
-          concept.branches?.map((branch) =>
-            branch.id === branchId ? { ...branch, title } : branch,
-          ) ?? null,
-      })),
-    );
+    sync.enqueue({
+      kind: "rename-branch",
+      id: crypto.randomUUID(),
+      branchId,
+      title,
+    });
+    updateBranch(conceptId, branchId, { title });
   }
 
-  function deleteBranch(conceptId: ConceptId, branchId: string) {
-    setConcepts((current) =>
-      updateConcept(current, conceptId, (concept) => ({
-        ...concept,
-        branches: concept.branches?.filter(({ id }) => id !== branchId) ?? null,
-      })),
-    );
+  function setArchived(
+    conceptId: ConceptId,
+    branchId: string,
+    archivedAt: string | null,
+  ) {
+    sync.enqueue({
+      kind: "archive-branch",
+      id: crypto.randomUUID(),
+      branchId,
+      archivedAt,
+    });
+    updateBranch(conceptId, branchId, { archivedAt });
 
     const concept = concepts.find(({ id }) => id === conceptId);
+    const branch = concept?.branches.find(({ id }) => id === branchId);
 
-    if (concept && branchId === activeBranchId) {
-      selectBranch(conceptId, concept.mainBranchId);
+    if (!concept || !branch || !archivedAt || branchId !== activeBranch.id) {
+      return;
     }
+
+    // Return to the branch it came from, or to Main.
+    const parentId = concept.revisions?.find(
+      ({ id }) => id === branch.sourceRevisionId,
+    )?.branchId;
+    const parent = concept.branches.find(
+      ({ id, archivedAt }) => id === parentId && !archivedAt,
+    );
+    selectBranch(conceptId, (parent ?? concept.branches[0]).id);
   }
 
   function setTrashed(id: ConceptId, deletedAt: string | null) {
@@ -466,7 +635,7 @@ export default function ConceptEditor({
     const next = remaining[Math.min(index, remaining.length - 1)];
 
     if (next) {
-      selectBranch(next.id, next.mainBranchId);
+      selectBranch(next.id, next.branches[0].id);
     } else {
       createConcept();
     }
@@ -482,12 +651,15 @@ export default function ConceptEditor({
       <div
         className="editor-window"
         inert={
-          sync.leftOver > 0 || importFailure !== null || branchToDelete !== null
+          sync.leftOver > 0 ||
+          importFailure !== null ||
+          checkpointName !== null ||
+          branchFailed
         }
       >
-        <header className="flex h-10 shrink-0 items-center border-b border-[var(--border-header)] bg-[var(--surface-shell)]">
+        <header className="flex h-10 shrink-0 items-center border-b border-(--border-header) bg-(--surface-shell)">
           {/* As wide as the rail, so the logo sits centred above it. */}
-          <div className="flex w-[46px] shrink-0 justify-center pl-1.5">
+          <div className="flex w-11.5 shrink-0 justify-center pl-1.5">
             <Image
               src="/icons/idea_design_logo.svg"
               alt="Idea Design"
@@ -498,7 +670,7 @@ export default function ConceptEditor({
           </div>
           <nav
             aria-label="Breadcrumb"
-            className={`truncate pl-[18px] text-ui text-[var(--text-tertiary)] transition-[padding] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+            className={`truncate pl-4.5 text-ui text-(--text-tertiary) transition-[padding] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
               panelOpen ? "md:pl-[calc(var(--panel-width)+12px)]" : ""
             }`}
           >
@@ -511,63 +683,119 @@ export default function ConceptEditor({
               /
             </span>
             <Menu
-              label={`Branch, ${activeBranch?.title ?? "Main"}`}
+              label={`Branch, ${activeBranch.title}`}
               trigger={
                 <>
-                  {activeBranch?.title ?? "Main"}
+                  {activeBranch.title}
+                  {activeBranch.archivedAt && (
+                    <span className="text-(--text-tertiary)">(Archived)</span>
+                  )}
                   <ChevronDown aria-hidden="true" size={10} />
                 </>
               }
-              triggerClassName="inline-flex items-center gap-1 text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
+              triggerClassName="inline-flex items-center gap-1 text-(--text-secondary) transition-colors hover:text-(--text-primary)"
             >
-              {(close) => (
-                <>
-                  {(
-                    activeConcept.branches ?? [
-                      { id: activeConcept.mainBranchId, title: "Main" },
-                    ]
-                  ).map((branch) => (
-                    <button
-                      key={branch.id}
-                      type="button"
-                      aria-pressed={branch.id === activeBranch?.id}
-                      className="menu-item min-w-36 justify-between"
-                      onClick={() => {
-                        selectBranch(activeConcept.id, branch.id);
-                        close();
-                      }}
-                    >
-                      {branch.title}
-                      {branch.id === activeBranch?.id && (
-                        <Check aria-hidden="true" size={10} />
-                      )}
-                    </button>
-                  ))}
-                  <div className="my-0.5 border-t border-[var(--border)]" />
+              {(close) => {
+                const archived = activeConcept.branches.filter(
+                  ({ archivedAt }) => archivedAt,
+                );
+                const branchItem = (branch: SessionBranch) => (
                   <button
+                    key={branch.id}
                     type="button"
-                    className="menu-item"
+                    aria-pressed={branch.id === activeBranch.id}
+                    className="menu-item min-w-44 justify-between"
                     onClick={() => {
-                      createBranch();
+                      selectBranch(activeConcept.id, branch.id);
                       close();
                     }}
                   >
-                    <Plus aria-hidden="true" size={10} />
-                    New Branch From Main
+                    <span className="truncate">{branch.title}</span>
+                    {branch.id === activeBranch.id && (
+                      <Check aria-hidden="true" size={10} />
+                    )}
                   </button>
-                </>
-              )}
+                );
+
+                return (
+                  <>
+                    {activeConcept.branches
+                      .filter(({ archivedAt }) => !archivedAt)
+                      .map(branchItem)}
+                    <MenuDivider />
+                    <button
+                      type="button"
+                      className="menu-item"
+                      onClick={() => {
+                        void branchFrom(activeConcept.id, activeBranch.id);
+                        close();
+                      }}
+                    >
+                      <Plus aria-hidden="true" size={10} />
+                      New Branch
+                    </button>
+                    <button
+                      type="button"
+                      className="menu-item"
+                      onClick={() => {
+                        setCheckpointName(
+                          `Checkpoint ${checkpoints.length + 1}`,
+                        );
+                        close();
+                      }}
+                    >
+                      <Flag aria-hidden="true" size={10} />
+                      Save Checkpoint…
+                    </button>
+                    {checkpoints.length > 0 && (
+                      <>
+                        <MenuDivider />
+                        <MenuHeading>Branch From Checkpoint</MenuHeading>
+                        {checkpoints.map((revision) => (
+                          <button
+                            key={revision.id}
+                            type="button"
+                            className="menu-item justify-between gap-4"
+                            onClick={() => {
+                              void branchFromCheckpoint(revision);
+                              close();
+                            }}
+                          >
+                            <span className="truncate">{revision.title}</span>
+                            <span className="font-normal text-(--text-tertiary)">
+                              {new Date(revision.createdAt).toLocaleDateString(
+                                undefined,
+                                { month: "short", day: "numeric" },
+                              )}
+                            </span>
+                          </button>
+                        ))}
+                      </>
+                    )}
+                    {archived.length > 0 && (
+                      <>
+                        <MenuDivider />
+                        <MenuHeading>Archived</MenuHeading>
+                        {archived.map(branchItem)}
+                      </>
+                    )}
+                  </>
+                );
+              }}
             </Menu>
-            <SaveIndicator status={sync.status} onRetry={sync.retry} />
+            <SaveIndicator
+              status={sync.status}
+              onRetry={() => void sync.flush()}
+            />
           </nav>
         </header>
 
         <div className="flex min-h-0 flex-1">
           <aside
-            className="flex shrink-0 bg-[var(--surface-shell)]"
+            className="flex shrink-0 bg-(--surface-shell)"
             aria-label="Editor Navigation"
           >
-            <nav className="my-1.5 ml-1.5 flex w-10 shrink-0 flex-col rounded-lg bg-[var(--surface-rail)] p-1 shadow-[inset_0_0_0_1px_var(--border-rail)]">
+            <nav className="my-1.5 ml-1.5 flex w-10 shrink-0 flex-col rounded-lg bg-(--surface-rail) p-1 shadow-[inset_0_0_0_1px_var(--border-rail)]">
               <div className="flex flex-col gap-1">
                 <RailItem
                   id="rail-concepts"
@@ -582,7 +810,7 @@ export default function ConceptEditor({
                     aria-expanded={panelOpen}
                     aria-controls="concepts-panel"
                     onClick={() => setPanelOpen((open) => !open)}
-                    className="flex h-8 w-full shrink-0 items-center justify-center rounded-md bg-[var(--surface-shell)]"
+                    className="flex h-8 w-full shrink-0 items-center justify-center rounded-md bg-(--surface-shell)"
                   >
                     <Squircle {...railIconProps} />
                   </button>
@@ -600,7 +828,7 @@ export default function ConceptEditor({
                       aria-label={label}
                       aria-describedby={`rail-${key}`}
                       disabled
-                      className="flex h-8 w-full shrink-0 items-center justify-center rounded-md bg-[var(--surface-idle)]"
+                      className="flex h-8 w-full shrink-0 items-center justify-center rounded-md bg-(--surface-idle)"
                     >
                       <Icon {...railIconProps} />
                     </button>
@@ -613,11 +841,11 @@ export default function ConceptEditor({
                   label="Settings"
                   above
                   trigger={<Settings {...railIconProps} />}
-                  triggerClassName="settings-trigger flex h-8 w-full shrink-0 items-center justify-center rounded-md bg-[var(--surface-canvas)]"
+                  triggerClassName="settings-trigger flex h-8 w-full shrink-0 items-center justify-center rounded-md bg-(--surface-canvas)"
                 >
                   {() => (
                     <>
-                      <p className="px-2 py-1.5 text-ui text-[var(--text-tertiary)]">
+                      <p className="px-2 py-1.5 text-ui text-(--text-tertiary)">
                         {email}
                       </p>
                       <button
@@ -639,12 +867,12 @@ export default function ConceptEditor({
             {/* Kept mounted so the panel can slide closed. */}
             <div
               className={`w-0 overflow-hidden transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-                panelOpen ? "md:w-[var(--panel-width)]" : ""
+                panelOpen ? "md:w-(--panel-width)" : ""
               }`}
             >
               <div
                 inert={!panelOpen}
-                className={`flex h-full w-[var(--panel-width)] transition-opacity duration-200 ${
+                className={`flex h-full w-(--panel-width) transition-opacity duration-200 ${
                   panelOpen ? "opacity-100" : "opacity-0"
                 }`}
               >
@@ -653,9 +881,19 @@ export default function ConceptEditor({
                   concepts={liveConcepts.map((concept) => ({
                     id: concept.id,
                     title: conceptTitle(concept),
-                    branches: concept.branches ?? [
-                      { id: concept.mainBranchId, title: "Main" },
-                    ],
+                    // An archived branch is listed only while it is open, so
+                    // it can be restored from its menu.
+                    branches: concept.branches
+                      .filter(
+                        ({ id, archivedAt }) =>
+                          !archivedAt || id === activeBranch.id,
+                      )
+                      .map(({ id, title, main, archivedAt }) => ({
+                        id,
+                        title,
+                        main,
+                        archived: archivedAt !== null,
+                      })),
                   }))}
                   trash={concepts
                     .filter(({ deletedAt }) => deletedAt)
@@ -664,25 +902,25 @@ export default function ConceptEditor({
                       title: conceptTitle(concept),
                     }))}
                   activeConceptId={activeConcept.id}
-                  activeBranchId={
-                    activeBranch?.id ?? activeConcept.mainBranchId
-                  }
+                  activeBranchId={activeBranch.id}
+                  renamingBranchId={renamingBranchId}
+                  onRenamingBranchChange={setRenamingBranchId}
                   onSelect={selectBranch}
                   onCreate={() => createConcept()}
                   onImport={importConcept}
                   onExport={downloadConcept}
-                  onCreateBranch={createBranch}
+                  onCreateBranch={(conceptId, branchId) =>
+                    void branchFrom(conceptId, branchId)
+                  }
                   onRename={renameConcept}
                   onRenameBranch={renameBranch}
-                  onDeleteBranch={(conceptId, branchId) => {
-                    const branch = concepts
-                      .find(({ id }) => id === conceptId)
-                      ?.branches?.find(({ id }) => id === branchId);
-
-                    if (branch) {
-                      setBranchToDelete({ conceptId, branch });
-                    }
-                  }}
+                  onArchiveBranch={(conceptId, branchId, archived) =>
+                    setArchived(
+                      conceptId,
+                      branchId,
+                      archived ? new Date().toISOString() : null,
+                    )
+                  }
                   onDelete={trashConcept}
                   onRestore={(id) => setTrashed(id, null)}
                   onDeleteForever={deleteForever}
@@ -693,10 +931,10 @@ export default function ConceptEditor({
           </aside>
 
           <main
-            className="min-w-0 flex-1 overflow-hidden rounded-l-xl border-l border-[var(--border-subtle)] bg-[var(--surface-canvas)]"
+            className="min-w-0 flex-1 overflow-hidden rounded-l-xl border-l border-(--border-subtle) bg-(--surface-canvas)"
             aria-label="Concept Editor"
           >
-            {activeBranch && (
+            {activeBranch.editor && (
               <ConceptCanvas
                 key={activeBranch.id}
                 state={activeBranch.editor}
@@ -723,7 +961,7 @@ export default function ConceptEditor({
               </button>
               <button
                 type="button"
-                className="menu-item bg-[var(--surface-control)] text-[var(--text-primary)]"
+                className="menu-item bg-(--surface-control) text-(--text-primary)"
                 onClick={() => void sync.applyLeftOver()}
               >
                 Apply
@@ -737,38 +975,69 @@ export default function ConceptEditor({
         </Notice>
       )}
 
-      {branchToDelete && (
+      {checkpointName !== null && (
         <Notice
-          title="Delete Branch"
-          onDismiss={() => setBranchToDelete(null)}
+          title="Save Checkpoint"
+          onDismiss={() => setCheckpointName(null)}
           actions={
             <>
               <button
                 type="button"
-                data-autofocus
                 className="menu-item"
-                onClick={() => setBranchToDelete(null)}
+                onClick={() => setCheckpointName(null)}
               >
                 Cancel
               </button>
               <button
-                type="button"
-                className="menu-item bg-[var(--surface-control)] text-[var(--text-primary)]"
-                onClick={() => {
-                  deleteBranch(
-                    branchToDelete.conceptId,
-                    branchToDelete.branch.id,
-                  );
-                  setBranchToDelete(null);
-                }}
+                type="submit"
+                form="checkpoint-form"
+                disabled={!checkpointName.trim()}
+                className="menu-item bg-(--surface-control) text-(--text-primary) disabled:opacity-40"
               >
-                Delete
+                Save
               </button>
             </>
           }
         >
-          “{branchToDelete.branch.title}” and every change in it will be
-          deleted. This can’t be undone.
+          Name this point in “{activeBranch.title}” so you can branch from it
+          later.
+          <form
+            id="checkpoint-form"
+            className="mt-2.5"
+            onSubmit={(event) => {
+              event.preventDefault();
+              saveCheckpoint(checkpointName.trim());
+              setCheckpointName(null);
+            }}
+          >
+            <input
+              data-autofocus
+              aria-label="Checkpoint Name"
+              value={checkpointName}
+              onChange={(event) => setCheckpointName(event.target.value)}
+              onFocus={(event) => event.target.select()}
+              className="h-7 w-full rounded-sm bg-(--surface-control) px-2 text-ui text-(--text-primary) outline-none"
+            />
+          </form>
+        </Notice>
+      )}
+
+      {branchFailed && (
+        <Notice
+          title="Could Not Branch"
+          onDismiss={() => setBranchFailed(false)}
+          actions={
+            <button
+              type="button"
+              className="menu-item bg-(--surface-control) text-(--text-primary)"
+              onClick={() => setBranchFailed(false)}
+            >
+              OK
+            </button>
+          }
+        >
+          This checkpoint hasn’t reached the server yet. Check your connection
+          and try again.
         </Notice>
       )}
 
@@ -779,7 +1048,7 @@ export default function ConceptEditor({
           actions={
             <button
               type="button"
-              className="menu-item bg-[var(--surface-control)] text-[var(--text-primary)]"
+              className="menu-item bg-(--surface-control) text-(--text-primary)"
               onClick={() => setImportFailure(null)}
             >
               OK
@@ -791,6 +1060,14 @@ export default function ConceptEditor({
       )}
     </div>
   );
+}
+
+function MenuDivider() {
+  return <div className="my-0.5 border-t border-(--border)" />;
+}
+
+function MenuHeading({ children }: { children: ReactNode }) {
+  return <p className="eyebrow px-2.5 pt-1.5 pb-1">{children}</p>;
 }
 
 /** Long enough to read, so a quick save does not flicker. */
@@ -829,7 +1106,7 @@ function SaveIndicator({
           type="button"
           title="Retry"
           onClick={onRetry}
-          className="text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
+          className="text-(--text-secondary) transition-colors hover:text-(--text-primary)"
         >
           Save Failed
         </button>
@@ -854,7 +1131,7 @@ function Notice({
 }: {
   title: string;
   children: ReactNode;
-  /** Focus starts on the action marked `data-autofocus`, or the last one. */
+  /** Focus starts on the element marked `data-autofocus`, or the last action. */
   actions: ReactNode;
   /** Called on Escape; without it the message must be answered. */
   onDismiss?: () => void;
@@ -863,9 +1140,7 @@ function Notice({
 
   useEffect(() => {
     ref.current
-      ?.querySelector<HTMLButtonElement>(
-        "button[data-autofocus], button:last-of-type",
-      )
+      ?.querySelector<HTMLElement>("[data-autofocus], button:last-of-type")
       ?.focus();
   }, []);
 
@@ -886,9 +1161,9 @@ function Notice({
       <h2 id="notice-title" className="text-[13px] font-medium">
         {title}
       </h2>
-      <p className="text-[11px] leading-4 text-[var(--text-tertiary)]">
+      <div className="text-small leading-4 text-(--text-tertiary)">
         {children}
-      </p>
+      </div>
       <div className="flex justify-end gap-1">{actions}</div>
     </div>
   );

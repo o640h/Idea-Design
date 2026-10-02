@@ -62,7 +62,7 @@ export default function ConceptOutline({
       <TextField
         aria-label="Concept Description"
         placeholder="Describe the idea"
-        className="mt-3 max-w-xl text-[11.5px] leading-4 text-[var(--text-secondary)]"
+        className="mt-3 max-w-xl text-[11.5px] leading-4 text-(--text-secondary)"
         commitWhileTyping
         value={concept.description}
         onCommit={(value, continuing) =>
@@ -131,7 +131,7 @@ function OutlineItem({
   return (
     <article
       aria-label={titles.get(component.id)}
-      className="flex flex-col gap-1.5 border-l border-[var(--border)] pl-3"
+      className="flex flex-col gap-1.5 border-l border-(--border) pl-3"
     >
       <div className="-ml-2 flex items-center">
         <TagMenu
@@ -157,7 +157,7 @@ function OutlineItem({
         singleLine
         aria-label="Title"
         placeholder="Untitled"
-        className="text-[13px] leading-[17px] text-[var(--text-primary)]"
+        className="text-[13px] leading-4.25 text-(--text-primary)"
         commitWhileTyping
         value={component.title}
         onCommit={(value, continuing) =>
@@ -175,7 +175,7 @@ function OutlineItem({
       <TextField
         aria-label="Description"
         placeholder="Add detail"
-        className="text-small leading-[14px] text-[var(--text-secondary)]"
+        className="text-small leading-3.5 text-(--text-secondary)"
         commitWhileTyping
         value={component.description}
         onCommit={(value, continuing) =>
@@ -196,10 +196,10 @@ function OutlineItem({
           {outgoing.map((relationship) => (
             <li
               key={relationship.id}
-              className="flex items-center gap-2 text-small text-[var(--text-tertiary)]"
+              className="flex items-center gap-2 text-small text-(--text-tertiary)"
             >
               <ArrowRight aria-hidden="true" size={10} />
-              <span className="text-[var(--text-secondary)]">
+              <span className="text-(--text-secondary)">
                 {titles.get(relationship.targetComponentId)}
               </span>
               <TextField

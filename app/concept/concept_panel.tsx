@@ -19,23 +19,29 @@ interface ConceptPanelProps {
   concepts: {
     id: ConceptId;
     title: string;
-    branches: { id: string; title: string }[];
+    branches: { id: string; title: string; main: boolean; archived: boolean }[];
   }[];
   trash: { id: ConceptId; title: string }[];
   activeConceptId: ConceptId;
   activeBranchId: string;
+  renamingBranchId: string | null;
+  onRenamingBranchChange: (branchId: string | null) => void;
   onSelect: (id: ConceptId, branchId: string) => void;
   onCreate: () => void;
   onImport: (file: File) => void;
   onExport: (id: ConceptId) => void;
-  onCreateBranch: () => void;
+  onCreateBranch: (conceptId: ConceptId, parentId: string) => void;
   onRename: (id: ConceptId, title: string) => void;
   onRenameBranch: (
     conceptId: ConceptId,
     branchId: string,
     title: string,
   ) => void;
-  onDeleteBranch: (conceptId: ConceptId, branchId: string) => void;
+  onArchiveBranch: (
+    conceptId: ConceptId,
+    branchId: string,
+    archived: boolean,
+  ) => void;
   onDelete: (id: ConceptId) => void;
   onRestore: (id: ConceptId) => void;
   onDeleteForever: (id: ConceptId) => void;
@@ -64,7 +70,7 @@ function HeaderButton({
       aria-expanded={expanded}
       disabled={!onClick}
       onClick={onClick}
-      className="grid h-8 w-10 place-items-center rounded-md text-[var(--text-rail)] transition-colors duration-150 hover:bg-[var(--surface-raised)] disabled:opacity-40 disabled:hover:bg-transparent"
+      className="grid h-8 w-10 place-items-center rounded-md text-(--text-rail) transition-colors duration-150 hover:bg-(--surface-raised) disabled:opacity-40 disabled:hover:bg-transparent"
     >
       <Icon aria-hidden="true" size={iconSize} strokeWidth={1.5} />
     </button>
@@ -90,7 +96,7 @@ function RenameField({
 
   return (
     <div
-      className={`flex items-center rounded-sm bg-[var(--surface-active)] ${kind === "Branch" ? "h-6 gap-1.5 pl-[22px] pr-1" : "h-7 gap-2 px-2"}`}
+      className={`flex items-center rounded-sm bg-(--surface-active) ${kind === "Branch" ? "h-6 gap-1.5 pl-5.5 pr-1" : "h-7 gap-2 px-2"}`}
     >
       <span
         aria-hidden="true"
@@ -101,7 +107,7 @@ function RenameField({
         singleLine
         aria-label={`${kind} Name`}
         placeholder={`Untitled ${kind}`}
-        className="min-w-0 flex-1 text-ui leading-none text-[var(--text-primary)]"
+        className="min-w-0 flex-1 text-ui leading-none text-(--text-primary)"
         value={title}
         onCommit={(value) => onRename(value.trim() || `Untitled ${kind}`)}
         onBlur={onDone}
@@ -131,6 +137,8 @@ export default function ConceptPanel({
   trash,
   activeConceptId,
   activeBranchId,
+  renamingBranchId,
+  onRenamingBranchChange: setRenamingBranchId,
   onSelect,
   onCreate,
   onImport,
@@ -138,7 +146,7 @@ export default function ConceptPanel({
   onCreateBranch,
   onRename,
   onRenameBranch,
-  onDeleteBranch,
+  onArchiveBranch,
   onDelete,
   onRestore,
   onDeleteForever,
@@ -152,7 +160,6 @@ export default function ConceptPanel({
   const allCollapsed = concepts.every(({ id }) => collapsed.has(id));
   const [trashOpen, setTrashOpen] = useState(false);
   const [renamingId, setRenamingId] = useState<ConceptId | null>(null);
-  const [renamingBranchId, setRenamingBranchId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const importInput = useRef<HTMLInputElement>(null);
 
@@ -216,12 +223,12 @@ export default function ConceptPanel({
       {/* Lines up with the rail: the icons match its first button (10px
           down, 32px tall) and the divider falls in the gap below it. Equal
           side padding keeps the evenly spaced icons centred. */}
-      <div className="flex h-11 shrink-0 items-start justify-between border-b border-[var(--border-subtle)] px-[9px] pt-2.5">
+      <div className="flex h-11 shrink-0 items-start justify-between border-b border-(--border-subtle) px-2.25 pt-2.5">
         <HeaderButton
-          label="New Branch From Main"
+          label="New Branch"
           Icon={FilePlusCorner}
           onClick={() => {
-            onCreateBranch();
+            onCreateBranch(activeConceptId, activeBranchId);
             expand(activeConceptId);
           }}
         />
@@ -249,9 +256,9 @@ export default function ConceptPanel({
         />
       </div>
 
-      <h2 className="eyebrow mt-[7px] mb-[7px] pl-[13px]">{workspaceTitle}</h2>
+      <h2 className="eyebrow mt-1.75 mb-1.75 pl-3.25">{workspaceTitle}</h2>
 
-      <ul className="flex flex-col px-[5px]">
+      <ul className="flex flex-col px-1.25">
         {concepts.map((concept) => {
           const active = concept.id === activeConceptId;
           const open = !collapsed.has(concept.id);
@@ -282,8 +289,8 @@ export default function ConceptPanel({
                   }}
                   className={`flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-ui leading-none transition-colors duration-150 ${
                     active
-                      ? "bg-[var(--surface-active)] text-[var(--text-primary)]"
-                      : "text-[var(--text-secondary)] hover:bg-[var(--surface-raised)] hover:text-[var(--text-primary)]"
+                      ? "bg-(--surface-active) text-(--text-primary)"
+                      : "text-(--text-secondary) hover:bg-(--surface-raised) hover:text-(--text-primary)"
                   }`}
                 >
                   <ConceptLabel title={concept.title} />
@@ -296,7 +303,7 @@ export default function ConceptPanel({
                 inert={!open}
               >
                 <ul aria-label="Branches">
-                  {concept.branches.map((branch, index) => (
+                  {concept.branches.map((branch) => (
                     <li key={branch.id} className="panel-row relative">
                       <span aria-hidden="true" className="branch-line" />
                       {renamingBranchId === branch.id ? (
@@ -336,24 +343,40 @@ export default function ConceptPanel({
                                   onSelect: () =>
                                     setRenamingBranchId(branch.id),
                                 },
-                                // Main is the concept itself; deleting the
+                                {
+                                  label: "New Branch",
+                                  onSelect: () =>
+                                    onCreateBranch(concept.id, branch.id),
+                                },
+                                // Main is the concept itself; trashing the
                                 // concept removes it.
-                                ...(index > 0
-                                  ? [
+                                ...(branch.main
+                                  ? []
+                                  : [
                                       {
-                                        label: "Delete",
+                                        label: branch.archived
+                                          ? "Restore"
+                                          : "Archive",
                                         onSelect: () =>
-                                          onDeleteBranch(concept.id, branch.id),
+                                          onArchiveBranch(
+                                            concept.id,
+                                            branch.id,
+                                            !branch.archived,
+                                          ),
                                       },
-                                    ]
-                                  : []),
+                                    ]),
                               ],
                             });
                           }}
-                          className={`flex h-6 w-full items-center gap-1.5 rounded-md pl-[22px] pr-1 text-left text-ui leading-none transition-colors duration-150 hover:bg-[var(--surface-raised)] ${active && branch.id === activeBranchId ? "text-[var(--text-primary)]" : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"}`}
+                          className={`flex h-6 w-full items-center gap-1.5 rounded-md pl-5.5 pr-1 text-left text-ui leading-none transition-colors duration-150 hover:bg-(--surface-raised) ${active && branch.id === activeBranchId ? "text-(--text-primary)" : "text-(--text-tertiary) hover:text-(--text-secondary)"}`}
                         >
                           <span aria-hidden="true" className="branch-dot" />
                           <span className="truncate">{branch.title}</span>
+                          {branch.archived && (
+                            <span className="ml-auto shrink-0 text-(--text-tertiary)">
+                              Archived
+                            </span>
+                          )}
                         </button>
                       )}
                     </li>
@@ -370,14 +393,14 @@ export default function ConceptPanel({
           aria-label="Recently Deleted"
           className="panel-row mt-auto pb-2"
         >
-          <div className="px-[5px]">
+          <div className="px-1.25">
             {/* The chevron sits in the square's column and the words line up
                 with the concept names. */}
             <button
               type="button"
               aria-expanded={trashOpen}
               onClick={() => setTrashOpen((open) => !open)}
-              className="flex h-7 w-full items-center gap-[7px] rounded-md px-2 text-left text-ui font-medium text-[var(--text-tertiary)] transition-colors duration-150 hover:bg-[var(--surface-raised)] hover:text-[var(--text-secondary)]"
+              className="flex h-7 w-full items-center gap-1.75 rounded-md px-2 text-left text-ui font-medium text-(--text-tertiary) transition-colors duration-150 hover:bg-(--surface-raised) hover:text-(--text-secondary)"
             >
               <ChevronRight
                 aria-hidden="true"
@@ -394,7 +417,7 @@ export default function ConceptPanel({
             data-open={trashOpen || undefined}
             inert={!trashOpen}
           >
-            <ul className="flex flex-col px-[5px]">
+            <ul className="flex flex-col px-1.25">
               {trash.map((concept) => (
                 <li key={concept.id} className="panel-row">
                   <button
@@ -402,7 +425,7 @@ export default function ConceptPanel({
                     aria-haspopup="menu"
                     onClick={(event) => openTrashMenu(event, concept.id)}
                     onContextMenu={(event) => openTrashMenu(event, concept.id)}
-                    className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-ui leading-none text-[var(--text-tertiary)] transition-colors duration-150 hover:bg-[var(--surface-raised)] hover:text-[var(--text-secondary)]"
+                    className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-ui leading-none text-(--text-tertiary) transition-colors duration-150 hover:bg-(--surface-raised) hover:text-(--text-secondary)"
                   >
                     <ConceptLabel title={concept.title} />
                   </button>

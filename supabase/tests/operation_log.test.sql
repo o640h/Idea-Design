@@ -10,8 +10,14 @@ insert into public.concepts (id, workspace_id, title) values
   ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Original');
 
 insert into public.branches (id, concept_id, title, main) values
-  ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'Main', true),
-  ('ffffffff-ffff-4fff-8fff-ffffffffffff', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'Alternative', false);
+  ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'Main', true);
+
+insert into public.revisions (id, branch_id, kind) values
+  ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 'branch');
+
+insert into public.branches (id, concept_id, title, main, source_revision_id) values
+  ('ffffffff-ffff-4fff-8fff-ffffffffffff', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'Alternative', false,
+   'dddddddd-dddd-4ddd-8ddd-dddddddddddd');
 
 insert into public.operations (branch_id, seq, change_id, position, operation) values
   ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 100, '99999999-9999-4999-8999-999999999999', 0,

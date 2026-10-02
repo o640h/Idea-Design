@@ -586,12 +586,12 @@ function ConceptHeader({
   dispatch: EditorDispatch;
 }) {
   return (
-    <header className="flex max-w-[420px] flex-col items-start">
+    <header className="flex max-w-105 flex-col items-start">
       <TextField
         singleLine
         aria-label="Concept Title"
         placeholder="Untitled Concept"
-        className="pointer-events-auto text-base leading-[22px] font-medium text-[var(--text-primary)]"
+        className="pointer-events-auto text-base leading-5.5 font-medium text-(--text-primary)"
         commitWhileTyping
         value={concept.title}
         onCommit={(value, continuing) =>
@@ -601,7 +601,7 @@ function ConceptHeader({
           )
         }
       />
-      <p className="mt-1 text-small text-[var(--text-tertiary)]">
+      <p className="mt-1 text-small text-(--text-tertiary)">
         {pluralise(concept.components.length, "Component")}
         <span aria-hidden="true">{"  ·  "}</span>
         {pluralise(concept.relationships.length, "Connection")}
@@ -618,7 +618,7 @@ function EmptyState({ onSubmit }: { onSubmit: (title: string) => void }) {
           singleLine
           aria-label="First Component"
           placeholder="What’s on your mind?"
-          className="max-w-[420px] text-xl leading-6 text-[var(--text-primary)]"
+          className="max-w-105 text-xl leading-6 text-(--text-primary)"
           value=""
           onCommit={(title) => {
             if (title.trim()) {
@@ -644,14 +644,14 @@ function DisplayMenu({
   ] as const;
 
   return (
-    <div className="absolute top-[22px] right-[23px] z-10">
+    <div className="absolute top-5.5 right-5.75 z-10">
       <Menu
         label="Display"
         align="end"
         trigger={
           <ChartNoAxesGantt aria-hidden="true" size={16} strokeWidth={1} />
         }
-        triggerClassName="display-trigger grid size-6 place-items-center rounded-sm text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-primary)]"
+        triggerClassName="display-trigger grid size-6 place-items-center rounded-sm text-(--text-tertiary) transition-colors hover:text-(--text-primary)"
       >
         {() =>
           options.map(({ key, label }) => (

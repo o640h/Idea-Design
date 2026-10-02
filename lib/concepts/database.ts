@@ -6,7 +6,7 @@ import {
   type OperationRow,
 } from "./editor";
 import type { ConceptId, EditableConcept, WorkspaceId } from "./model";
-import type { Operation } from "./operations";
+import { applyOperations, type Operation } from "./operations";
 import type { OutboxEntry } from "./outbox";
 
 /** Snapshots are saved once a branch has this many operations since the last. */
@@ -14,12 +14,31 @@ export const SNAPSHOT_INTERVAL = 100;
 
 const PAGE_SIZE = 1000;
 
+export interface BranchSummary {
+  id: string;
+  title: string;
+  main: boolean;
+  archivedAt: string | null;
+  /** The revision of its parent the branch started from; null for Main. */
+  sourceRevisionId: string | null;
+}
+
 export interface ConceptSummary {
   id: ConceptId;
   /** Main's title as last saved, shown until the concept is opened. */
   title: string;
   deletedAt: string | null;
-  mainBranchId: string;
+  /** Main first, then in the order they were made. */
+  branches: BranchSummary[];
+}
+
+export interface Revision {
+  id: string;
+  branchId: string;
+  kind: "branch" | "checkpoint";
+  /** A checkpoint's name; null for a branch point. */
+  title: string | null;
+  createdAt: string;
 }
 
 /** A write the server rejected; permanent ones will never succeed. */
@@ -66,10 +85,13 @@ export async function listConcepts(
 ): Promise<ConceptSummary[]> {
   const { data, error } = await supabase
     .from("concepts")
-    .select("id, title, deleted_at, branches!inner(id)")
+    .select(
+      "id, title, deleted_at, branches(id, title, main, archived_at, source_revision_id)",
+    )
     .eq("workspace_id", workspaceId)
-    .eq("branches.main", true)
-    .order("created_at");
+    .order("created_at")
+    .order("main", { referencedTable: "branches", ascending: false })
+    .order("created_at", { referencedTable: "branches" });
 
   if (error) {
     throw error;
@@ -79,7 +101,38 @@ export async function listConcepts(
     id: row.id,
     title: row.title,
     deletedAt: row.deleted_at,
-    mainBranchId: row.branches[0].id,
+    branches: row.branches.map((branch) => ({
+      id: branch.id,
+      title: branch.title,
+      main: branch.main,
+      archivedAt: branch.archived_at,
+      sourceRevisionId: branch.source_revision_id,
+    })),
+  }));
+}
+
+export async function listRevisions(
+  supabase: SupabaseClient,
+  conceptId: ConceptId,
+): Promise<Revision[]> {
+  const { data, error } = await supabase
+    .from("revisions")
+    .select(
+      "id, branch_id, kind, title, created_at, branches!revisions_branch_id_fkey!inner(concept_id)",
+    )
+    .eq("branches.concept_id", conceptId)
+    .order("created_at");
+
+  if (error) {
+    throw error;
+  }
+
+  return data.map((row) => ({
+    id: row.id,
+    branchId: row.branch_id,
+    kind: row.kind,
+    title: row.title,
+    createdAt: row.created_at,
   }));
 }
 
@@ -87,6 +140,7 @@ export async function fetchOperations(
   supabase: SupabaseClient,
   branchId: string,
   afterSeq: number,
+  upToSeq = Number.MAX_SAFE_INTEGER,
 ): Promise<OperationRow[]> {
   const rows: OperationRow[] = [];
   let after = afterSeq;
@@ -97,6 +151,7 @@ export async function fetchOperations(
       .select("seq, change_id, operation")
       .eq("branch_id", branchId)
       .gt("seq", after)
+      .lte("seq", upToSeq)
       .order("seq")
       .limit(PAGE_SIZE);
 
@@ -133,16 +188,27 @@ export async function saveSnapshot(
   );
 }
 
-/** Opens a branch from its latest snapshot plus the operations after it. */
-export async function loadEditor(
+interface BranchOwner {
+  conceptId: ConceptId;
+  workspaceId: WorkspaceId;
+}
+
+/**
+ * Where replaying a branch up to `upToSeq` begins: its latest snapshot by
+ * then, or else its parent's document at the source revision, since a
+ * branch's log holds only the operations made after it diverged.
+ */
+async function replayStart(
   supabase: SupabaseClient,
-  concept: ConceptSummary,
-  workspaceId: WorkspaceId,
-): Promise<EditorState> {
+  branchId: string,
+  owner: BranchOwner,
+  upToSeq = Number.MAX_SAFE_INTEGER,
+): Promise<{ seq: number; document: EditableConcept }> {
   const { data: snapshot, error } = await supabase
     .from("snapshots")
     .select("seq, document")
-    .eq("branch_id", concept.mainBranchId)
+    .eq("branch_id", branchId)
+    .lte("seq", upToSeq)
     .order("seq", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -151,11 +217,74 @@ export async function loadEditor(
     throw error;
   }
 
-  const start: { seq: number; document: EditableConcept } = snapshot ?? {
+  if (snapshot) {
+    return snapshot;
+  }
+
+  const { data: branch, error: branchError } = await supabase
+    .from("branches")
+    .select("source:revisions!branches_source_revision_id_fkey(branch_id, seq)")
+    .eq("id", branchId)
+    .single<{ source: { branch_id: string; seq: number } | null }>();
+
+  if (branchError) {
+    throw branchError;
+  }
+
+  return {
     seq: 0,
-    document: emptyConcept(concept.id, workspaceId),
+    document: branch.source
+      ? await documentAt(
+          supabase,
+          branch.source.branch_id,
+          owner,
+          branch.source.seq,
+        )
+      : emptyConcept(owner.conceptId, owner.workspaceId),
   };
-  const rows = await fetchOperations(supabase, concept.mainBranchId, start.seq);
+}
+
+async function documentAt(
+  supabase: SupabaseClient,
+  branchId: string,
+  owner: BranchOwner,
+  seq: number,
+) {
+  const start = await replayStart(supabase, branchId, owner, seq);
+  const rows = await fetchOperations(supabase, branchId, start.seq, seq);
+  return applyOperations(
+    start.document,
+    rows.map(({ operation }) => operation),
+  ).document;
+}
+
+/** The concept as it was at a saved revision, to start a branch from. */
+export async function revisionDocument(
+  supabase: SupabaseClient,
+  revisionId: string,
+  owner: BranchOwner,
+) {
+  const { data, error } = await supabase
+    .from("revisions")
+    .select("branch_id, seq")
+    .eq("id", revisionId)
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return documentAt(supabase, data.branch_id, owner, data.seq);
+}
+
+/** Opens a branch from its latest snapshot plus the operations after it. */
+export async function loadEditor(
+  supabase: SupabaseClient,
+  branchId: string,
+  owner: BranchOwner,
+): Promise<EditorState> {
+  const start = await replayStart(supabase, branchId, owner);
+  const rows = await fetchOperations(supabase, branchId, start.seq);
   const editor = editorReducer(createEditorState(start.document, start.seq), {
     type: "sync/pull",
     rows,
@@ -163,12 +292,9 @@ export async function loadEditor(
 
   // Snapshots only speed up opening, so failing to save one is not an error.
   if (rows.length >= SNAPSHOT_INTERVAL) {
-    await saveSnapshot(
-      supabase,
-      concept.mainBranchId,
-      editor.seq,
-      editor.confirmed,
-    ).catch((error) => console.warn("Snapshot not saved", error));
+    await saveSnapshot(supabase, branchId, editor.seq, editor.confirmed).catch(
+      (error) => console.warn("Snapshot not saved", error),
+    );
   }
 
   return editor;
@@ -189,6 +315,46 @@ export async function sendEntry(supabase: SupabaseClient, entry: OutboxEntry) {
           title: "Main",
           main: true,
         }),
+      );
+      return;
+
+    case "revision":
+      check(
+        await supabase.from("revisions").insert({
+          id: entry.revisionId,
+          branch_id: entry.branchId,
+          kind: entry.revisionKind,
+          title: entry.title,
+        }),
+      );
+      return;
+
+    case "branch":
+      check(
+        await supabase.from("branches").insert({
+          id: entry.branchId,
+          concept_id: entry.conceptId,
+          title: entry.title,
+          source_revision_id: entry.sourceRevisionId,
+        }),
+      );
+      return;
+
+    case "rename-branch":
+      check(
+        await supabase
+          .from("branches")
+          .update({ title: entry.title })
+          .eq("id", entry.branchId),
+      );
+      return;
+
+    case "archive-branch":
+      check(
+        await supabase
+          .from("branches")
+          .update({ archived_at: entry.archivedAt })
+          .eq("id", entry.branchId),
       );
       return;
 

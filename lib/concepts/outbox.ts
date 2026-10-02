@@ -10,6 +10,29 @@ export type OutboxEntry =
       workspaceId: string;
       branchId: string;
     }
+  | {
+      kind: "revision";
+      id: string;
+      revisionId: string;
+      branchId: string;
+      revisionKind: "branch" | "checkpoint";
+      title: string | null;
+    }
+  | {
+      kind: "branch";
+      id: string;
+      branchId: string;
+      conceptId: string;
+      title: string;
+      sourceRevisionId: string;
+    }
+  | { kind: "rename-branch"; id: string; branchId: string; title: string }
+  | {
+      kind: "archive-branch";
+      id: string;
+      branchId: string;
+      archivedAt: string | null;
+    }
   | { kind: "change"; id: string; branchId: string; operations: Operation[] }
   | { kind: "trash"; id: string; conceptId: string; deletedAt: string | null }
   | { kind: "delete"; id: string; conceptId: string };

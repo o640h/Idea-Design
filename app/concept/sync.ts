@@ -10,13 +10,16 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import {
+  type BranchSummary,
   fetchOperations,
+  type Revision,
   SaveError,
   SNAPSHOT_INTERVAL,
   saveSnapshot,
   sendEntry,
 } from "@/lib/concepts/database";
 import {
+  type ChangeOptions,
   type EditorAction,
   type EditorState,
   editorReducer,
@@ -29,52 +32,53 @@ import { createClient } from "@/lib/supabase/client";
 const SAVE_DELAY_MS = 800;
 const MAX_RETRY_MS = 30_000;
 
-export interface SessionBranch {
-  id: string;
-  title: string;
-  editor: EditorState;
+export interface SessionBranch extends BranchSummary {
+  /** Null until the branch is opened. */
+  editor: EditorState | null;
 }
 
 export interface SessionConcept {
   id: ConceptId;
-  /** Main's saved title, shown until the concept is opened. */
+  /** Main's saved title, shown until Main is opened. */
   title: string;
   deletedAt: string | null;
-  mainBranchId: string;
-  /** Main first; null until the concept is opened. Only Main is saved. */
-  branches: SessionBranch[] | null;
+  /** Main first, then in the order they were made. */
+  branches: SessionBranch[];
+  /** Null until the concept is opened. */
+  revisions: Revision[] | null;
 }
 
 /** Saving only while changes are on their way to the server. */
 export type SaveStatus = "saved" | "saving" | "failed";
 
-/** Applies an editor action to each opened concept's Main branch. */
-export function updateMain(
+/** Applies an editor action to one opened branch, or to every opened branch. */
+export function updateEditors(
   concepts: SessionConcept[],
   action: EditorAction,
-  conceptId?: ConceptId,
+  branchId?: string,
+  options?: ChangeOptions,
 ) {
-  return concepts.map((concept) => {
-    const [main, ...alternatives] = concept.branches ?? [];
-
-    if (!main || (conceptId && concept.id !== conceptId)) {
-      return concept;
-    }
-
-    return {
-      ...concept,
-      branches: [
-        { ...main, editor: editorReducer(main.editor, action) },
-        ...alternatives,
-      ],
-    };
-  });
+  return concepts.map((concept) =>
+    branchId && !concept.branches.some(({ id }) => id === branchId)
+      ? concept
+      : {
+          ...concept,
+          branches: concept.branches.map((branch) =>
+            branch.editor && (!branchId || branch.id === branchId)
+              ? {
+                  ...branch,
+                  editor: editorReducer(branch.editor, action, options),
+                }
+              : branch,
+          ),
+        },
+  );
 }
 
 /**
- * Saves each opened concept's Main branch through the IndexedDB outbox and
- * pulls operations made elsewhere, after edits and whenever the tab regains
- * focus or connection.
+ * Saves each opened branch through the IndexedDB outbox and pulls operations
+ * made elsewhere, after edits and whenever the tab regains focus or
+ * connection.
  */
 export function useSync(
   concepts: SessionConcept[],
@@ -93,14 +97,16 @@ export function useSync(
   async function pull() {
     const supabase = createClient();
 
-    for (const concept of latest.current) {
-      const main = concept.branches?.[0];
+    const opened = latest.current.flatMap(({ branches }) =>
+      branches.flatMap(({ id, editor }) => (editor ? [{ id, editor }] : [])),
+    );
 
-      if (!main) {
-        continue;
-      }
-
-      const rows = await fetchOperations(supabase, main.id, main.editor.seq);
+    for (const branch of opened) {
+      const rows = await fetchOperations(
+        supabase,
+        branch.id,
+        branch.editor.seq,
+      );
 
       if (!rows.length) {
         continue;
@@ -108,25 +114,27 @@ export function useSync(
 
       flushSync(() =>
         setConcepts((current) =>
-          updateMain(current, { type: "sync/pull", rows }, concept.id),
+          updateEditors(current, { type: "sync/pull", rows }, branch.id),
         ),
       );
 
-      const { editor } =
-        latest.current.find(({ id }) => id === concept.id)?.branches?.[0] ??
-        main;
-      const snapshotSeq = snapshotSeqs.current.get(main.id) ?? main.editor.seq;
+      const editor =
+        latest.current
+          .flatMap(({ branches }) => branches)
+          .find(({ id }) => id === branch.id)?.editor ?? branch.editor;
+      const snapshotSeq =
+        snapshotSeqs.current.get(branch.id) ?? branch.editor.seq;
 
       if (editor.seq - snapshotSeq >= SNAPSHOT_INTERVAL) {
-        snapshotSeqs.current.set(main.id, editor.seq);
+        snapshotSeqs.current.set(branch.id, editor.seq);
         await saveSnapshot(
           supabase,
-          main.id,
+          branch.id,
           editor.seq,
           editor.confirmed,
         ).catch((error) => console.warn("Snapshot not saved", error));
       } else {
-        snapshotSeqs.current.set(main.id, snapshotSeq);
+        snapshotSeqs.current.set(branch.id, snapshotSeq);
       }
     }
   }
@@ -150,7 +158,9 @@ export function useSync(
         // Edits made while sending start new changes instead of growing
         // ones already on their way.
         flushSync(() =>
-          setConcepts((current) => updateMain(current, { type: "sync/seal" })),
+          setConcepts((current) =>
+            updateEditors(current, { type: "sync/seal" }),
+          ),
         );
 
         for (const entry of await outbox.own()) {
@@ -195,17 +205,14 @@ export function useSync(
     latest.current = concepts;
     let wrote = false;
 
-    for (const concept of concepts) {
-      const main = concept.branches?.[0];
-
-      for (const change of main?.editor.pending.slice(main.editor.sealed) ??
-        []) {
-        if (main && written.current.get(change.id) !== change.operations) {
+    for (const { id, editor } of concepts.flatMap(({ branches }) => branches)) {
+      for (const change of editor?.pending.slice(editor.sealed) ?? []) {
+        if (written.current.get(change.id) !== change.operations) {
           written.current.set(change.id, change.operations);
           void outbox.put({
             kind: "change",
             id: change.id,
-            branchId: main.id,
+            branchId: id,
             operations: change.operations,
           });
           wrote = true;
@@ -251,7 +258,8 @@ export function useSync(
       window.clearTimeout(timer.current);
       timer.current = window.setTimeout(sync, SAVE_DELAY_MS);
     },
-    retry: () => void sync(),
+    /** Sends the outbox now; resolves once sent, or after a failed attempt. */
+    flush: sync,
     async applyLeftOver() {
       await outbox.adopt(leftOver);
       await sync();

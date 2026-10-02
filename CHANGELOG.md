@@ -43,8 +43,9 @@ Notable changes to Idea Design are recorded here.
 - Draw "depends on" connections dashed and "alternative to" connections dotted,
   with both kinds offered in the connection menu.
 - Switch branches from the last breadcrumb segment.
-- Delete alternative branches from their right-click menu, after a
-  confirmation.
+- Save branches with their lineage: branch from any branch's current state or
+  from a named checkpoint, keep component IDs, reopen the last branch used, and
+  rename or archive branches without losing their history.
 - Name each rail view and its shortcut in a tooltip; Alt+1 toggles the Concepts
   panel and Ctrl+, opens Settings.
 - Raise text people read to at least 11px with 4.5:1 contrast.

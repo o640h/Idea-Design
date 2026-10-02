@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import {
   type ConceptSummary,
   listConcepts,
+  listRevisions,
   loadEditor,
   sendEntry,
 } from "@/lib/concepts/database";
@@ -37,7 +38,15 @@ export default async function Home() {
       id: crypto.randomUUID(),
       title: "",
       deletedAt: null,
-      mainBranchId: crypto.randomUUID(),
+      branches: [
+        {
+          id: crypto.randomUUID(),
+          title: "Main",
+          main: true,
+          archivedAt: null,
+          sourceRevisionId: null,
+        },
+      ],
     };
 
     await sendEntry(supabase, {
@@ -45,14 +54,19 @@ export default async function Home() {
       id: crypto.randomUUID(),
       conceptId: concept.id,
       workspaceId: workspace.id,
-      branchId: concept.mainBranchId,
+      branchId: concept.branches[0].id,
     });
     concepts.push(concept);
     live.push(concept);
   }
 
-  const lastConceptId = (await cookies()).get("last_concept")?.value;
+  const cookieStore = await cookies();
+  const lastConceptId = cookieStore.get("last_concept")?.value;
+  const lastBranchId = cookieStore.get("last_branch")?.value;
   const opened = live.find(({ id }) => id === lastConceptId) ?? live[0];
+  const branch =
+    opened.branches.find(({ id }) => id === lastBranchId) ?? opened.branches[0];
+  const owner = { conceptId: opened.id, workspaceId: workspace.id };
 
   return (
     <ConceptEditor
@@ -61,7 +75,9 @@ export default async function Home() {
       concepts={concepts}
       opened={{
         id: opened.id,
-        editor: await loadEditor(supabase, opened, workspace.id),
+        branchId: branch.id,
+        editor: await loadEditor(supabase, branch.id, owner),
+        revisions: await listRevisions(supabase, opened.id),
       }}
     />
   );

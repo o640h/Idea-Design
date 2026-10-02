@@ -469,7 +469,7 @@ export function RelationshipEdge({
                 singleLine
                 aria-label="Connection Label"
                 placeholder="Add Label"
-                className="menu-surface min-w-16 max-w-40 px-2 py-1 text-[var(--text-primary)]"
+                className="menu-surface min-w-16 max-w-40 px-2 py-1 text-(--text-primary)"
                 value={label ?? ""}
                 onCommit={(value) =>
                   dispatch({

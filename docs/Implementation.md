@@ -156,15 +156,15 @@ current session state.
 
 ### 3.1 Create Branches and Revisions
 
-- [ ] Represent branches as pointers to operation-log heads, so revisions,
+- [x] Represent branches as pointers to operation-log heads, so revisions,
   lineage, comparison and rewinding derive from the same log.
-- [ ] Make the session alternatives from 2.2 durable branches.
-- [ ] Create a revision at each branch point, named checkpoint and accepted
-  merge.
-- [ ] Branch from any revision while preserving inherited component IDs.
-- [ ] Record the source revision, parent branch and divergence point.
-- [ ] Edit a branch without modifying its parent or sibling branches.
-- [ ] Rename, switch and archive branches without deleting their history.
+- [x] Make the session alternatives from 2.2 durable branches.
+- [x] Create a revision at each branch point and named checkpoint. Accepted
+  merges add theirs in 4.1.
+- [x] Branch from any revision while preserving inherited component IDs.
+- [x] Record the source revision, parent branch and divergence point.
+- [x] Edit a branch without modifying its parent or sibling branches.
+- [x] Rename, switch and archive branches without deleting their history.
 
 ### 3.2 Explore From a Component
 
@@ -219,7 +219,7 @@ current session state.
   selected change and say so.
 - [ ] Preview the result before applying it, and reject the preview if the
   target changed in the meantime.
-- [ ] Make each merge one undoable operation.
+- [ ] Make each merge one undoable operation, and record it as a revision.
 - [ ] Rely on Compare to show what still differs after a partial merge,
   rather than tracking which changes were excluded.
 - [ ] Test conflicting edits, missing dependencies and repeated partial merges.
