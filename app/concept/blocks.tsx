@@ -53,14 +53,27 @@ export type BlockNodeType = Node<
     fixedWidth: boolean;
     minHeight?: number;
     editing: boolean;
+    /** Starts editing with the title selected, ready to be replaced. */
+    selectTitle?: boolean;
     /** Not yet added to the concept; it becomes a component once it has text. */
     draft: boolean;
+    /**
+     * While exploring: changed here, connected to a change, or removed and
+     * shown where it was.
+     */
+    mark?: "changed" | "review" | "removed";
+    /** The title before it was changed while exploring. */
+    previousTitle?: string;
   },
   "block"
 >;
 
 export type RelationshipEdgeType = Edge<
-  { relationship: ConceptRelationship },
+  {
+    relationship: ConceptRelationship;
+    /** Removed while exploring, and drawn faintly. */
+    removed?: boolean;
+  },
   "relationship"
 >;
 
@@ -105,11 +118,13 @@ function BlockEditor({
   component,
   formats,
   measured,
+  selectTitle,
   onFocusField,
 }: {
   component: ConceptComponent;
   formats: ComponentLayout["formats"];
   measured: boolean;
+  selectTitle: boolean;
   onFocusField: (field: ComponentTextField) => void;
 }) {
   const { commitField, stopEditing } = useCanvasActions();
@@ -118,12 +133,18 @@ function BlockEditor({
 
   // React Flow hides a node until it is measured, and hidden fields cannot
   // take focus.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the title is selected only as editing starts
   useEffect(() => {
     const title = titleRef.current;
 
     if (measured && title) {
       title.focus();
-      title.setSelectionRange(title.value.length, title.value.length);
+
+      if (selectTitle) {
+        title.select();
+      } else {
+        title.setSelectionRange(title.value.length, title.value.length);
+      }
     }
   }, [measured]);
 
@@ -322,13 +343,57 @@ function FormatBar({
   );
 }
 
+/** A component removed while exploring, left faintly where it was. */
+function RemovedBlock({
+  component,
+  formats,
+  fixedWidth,
+  minHeight,
+}: BlockNodeType["data"]) {
+  return (
+    <div
+      className="concept-block is-removed"
+      data-fixed-width={fixedWidth || undefined}
+      style={{ fontSize: formats.title.fontSize, minHeight }}
+    >
+      {/* Unseen, but the connections it had are drawn to them. */}
+      <Handle
+        id="left"
+        type="source"
+        position={Position.Left}
+        isConnectable={false}
+        className="block-handle"
+      />
+      <Handle
+        id="right"
+        type="source"
+        position={Position.Right}
+        isConnectable={false}
+        className="block-handle"
+      />
+      <p className="block-note">Removed</p>
+      {component.tag && <p className="eyebrow block-tag">{component.tag}</p>}
+      <p className="block-title" style={textStyle(formats.title)}>
+        {component.title || "Untitled"}
+      </p>
+      {component.description && (
+        <p className="block-description" style={textStyle(formats.description)}>
+          {component.description}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export const BlockNode = memo(function BlockNode({
   id,
-  data: { component, formats, fixedWidth, minHeight, editing, draft },
+  data,
   selected,
   dragging,
   width,
 }: NodeProps<BlockNodeType>) {
+  const { component, formats, fixedWidth, minHeight, editing, draft, mark } =
+    data;
   const { dispatch } = useCanvasActions();
   const [field, setField] = useState<ComponentTextField>("title");
   const [preview, setPreview] = useState<Partial<TextFormat> | null>(null);
@@ -338,13 +403,23 @@ export const BlockNode = memo(function BlockNode({
       ? formats
       : { ...formats, [field]: { ...formats[field], ...preview } };
 
+  if (mark === "removed") {
+    return <RemovedBlock {...data} />;
+  }
+
   return (
     <div
-      className={`concept-block writing-underline${selected ? " is-selected" : ""}`}
+      className={`concept-block writing-underline${selected ? " is-selected" : ""}${mark === "review" ? " is-review" : ""}`}
+      title={
+        mark === "review"
+          ? "Connected to a change, so it may need review"
+          : undefined
+      }
       data-fixed-width={fixedWidth || resizing || undefined}
       data-resizing={resizing || undefined}
       style={{ fontSize: shownFormats.title.fontSize, minHeight }}
     >
+      {mark === "review" && <p className="block-note">Review</p>}
       {(selected || editing) && !draft && !dragging && (
         <NodeResizeControl
           position="bottom-right"
@@ -383,6 +458,7 @@ export const BlockNode = memo(function BlockNode({
           component={component}
           formats={shownFormats}
           measured={Boolean(width)}
+          selectTitle={Boolean(data.selectTitle)}
           onFocusField={setField}
         />
       ) : (
@@ -391,6 +467,14 @@ export const BlockNode = memo(function BlockNode({
             className={`block-title${component.title ? "" : " is-empty"}`}
             style={textStyle(shownFormats.title)}
           >
+            {mark === "changed" && (
+              <span
+                role="img"
+                aria-label="Changed"
+                title="Changed in this branch"
+                className="block-change-dot"
+              />
+            )}
             {component.title || "Untitled"}
           </p>
           {component.description && (
@@ -399,6 +483,11 @@ export const BlockNode = memo(function BlockNode({
               style={textStyle(shownFormats.description)}
             >
               {component.description}
+            </p>
+          )}
+          {data.previousTitle !== undefined && (
+            <p className="block-previous">
+              was “{data.previousTitle || "Untitled"}”
             </p>
           )}
         </>
@@ -481,7 +570,9 @@ export function RelationshipEdge({
                 }
               />
             ) : (
-              <span>{label}</span>
+              <span className={data?.removed ? "is-removed" : undefined}>
+                {label}
+              </span>
             )}
           </div>
         </EdgeLabelRenderer>

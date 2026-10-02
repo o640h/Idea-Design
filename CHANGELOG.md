@@ -46,6 +46,9 @@ Notable changes to Idea Design are recorded here.
 - Save branches with their lineage: branch from any branch's current state or
   from a named checkpoint, keep component IDs, reopen the last branch used, and
   rename or archive branches without losing their history.
+- Explore from a selected component: Substitute, Constrain or Remove it in
+  branches of their own, see changes marked and connected components boxed for
+  review, then keep the branches with Done or archive them with Discard or Esc.
 - Name each rail view and its shortcut in a tooltip; Alt+1 toggles the Concepts
   panel and Ctrl+, opens Settings.
 - Raise text people read to at least 11px with 4.5:1 contrast.

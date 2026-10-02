@@ -4,6 +4,7 @@ import { useReactFlow, useStore } from "@xyflow/react";
 import { ChevronDown, Plus, Redo, Undo } from "lucide-react";
 import type { ReactNode } from "react";
 import type { EditorAction } from "@/lib/concepts/editor";
+import { EXPLORE_TOOLS, type ExploreTool } from "./explore";
 import Menu from "./menu";
 
 export type CanvasView = "canvas" | "outline";
@@ -16,12 +17,14 @@ export function animationDuration() {
 
 function ToolbarButton({
   label,
+  hint,
   children,
   disabled,
   pressed,
   onClick,
 }: {
   label: string;
+  hint?: string;
   children: ReactNode;
   disabled?: boolean;
   pressed?: boolean;
@@ -31,6 +34,7 @@ function ToolbarButton({
     <button
       type="button"
       aria-label={label}
+      title={hint}
       aria-pressed={pressed}
       disabled={disabled}
       onClick={onClick}
@@ -41,10 +45,13 @@ function ToolbarButton({
   );
 }
 
+/** Canvas tools; while exploring, the explore tools replace adding and the outline. */
 export default function BottomBar({
   view,
   onViewChange,
   onAdd,
+  onExplore,
+  explore,
   onFit,
   canUndo,
   canRedo,
@@ -53,6 +60,13 @@ export default function BottomBar({
   view: CanvasView;
   onViewChange: (view: CanvasView) => void;
   onAdd: () => void;
+  /** Null while no component is selected. */
+  onExplore: (() => void) | null;
+  explore: {
+    onTool: (tool: ExploreTool) => void;
+    /** False once the component explored from is gone from its branch. */
+    available: boolean;
+  } | null;
   onFit: () => void;
   canUndo: boolean;
   canRedo: boolean;
@@ -63,10 +77,27 @@ export default function BottomBar({
   return (
     <div
       role="toolbar"
-      aria-label="Canvas Tools"
+      aria-label={explore ? "Explore Tools" : "Canvas Tools"}
       className="absolute bottom-8.5 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2.5 border-b border-(--border-underline) px-1 pb-2"
     >
-      {view === "canvas" && (
+      {explore && (
+        <>
+          {EXPLORE_TOOLS.map(({ tool, label, hint }) => (
+            <ToolbarButton
+              key={tool}
+              label={label}
+              hint={hint}
+              disabled={!explore.available}
+              onClick={() => explore.onTool(tool)}
+            >
+              {label}
+            </ToolbarButton>
+          ))}
+          {divider}
+        </>
+      )}
+
+      {!explore && view === "canvas" && (
         <>
           <button
             type="button"
@@ -76,6 +107,18 @@ export default function BottomBar({
             <Plus aria-hidden="true" size={10} strokeWidth={1.5} />
             Add
           </button>
+          <ToolbarButton
+            label="Explore"
+            hint={
+              onExplore
+                ? "Explore alternatives to the selected component (E)"
+                : "Select a component to explore from it"
+            }
+            disabled={!onExplore}
+            onClick={() => onExplore?.()}
+          >
+            Explore
+          </ToolbarButton>
           {divider}
         </>
       )}
@@ -103,17 +146,23 @@ export default function BottomBar({
             Fit
           </ToolbarButton>
           <ZoomMenu />
-          {divider}
         </>
       )}
 
-      <ToolbarButton
-        label="Outline"
-        pressed={view === "outline"}
-        onClick={() => onViewChange(view === "outline" ? "canvas" : "outline")}
-      >
-        Outline
-      </ToolbarButton>
+      {!explore && (
+        <>
+          {view === "canvas" && divider}
+          <ToolbarButton
+            label="Outline"
+            pressed={view === "outline"}
+            onClick={() =>
+              onViewChange(view === "outline" ? "canvas" : "outline")
+            }
+          >
+            Outline
+          </ToolbarButton>
+        </>
+      )}
     </div>
   );
 }

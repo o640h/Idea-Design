@@ -13,16 +13,19 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/base.css";
 import { ChartNoAxesGantt, Check } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { ThinkingOrb } from "thinking-orbs";
+import { componentChanges, connectedToChanges } from "@/lib/concepts/diff";
 import type { EditorDispatch, EditorState } from "@/lib/concepts/editor";
 import {
   type ComponentId,
   type ComponentTextField,
   type Concept,
+  type ConceptRelationship,
   createComponent,
   createComponentLayout,
   DEFAULT_TEXT_FORMATS,
+  type EditableConcept,
   RELATIONSHIP_KINDS,
 } from "@/lib/concepts/model";
 import {
@@ -33,6 +36,7 @@ import {
   type RelationshipEdgeType,
 } from "./blocks";
 import ContextMenu, { type ContextMenuState } from "./context_menu";
+import type { ExploreTool } from "./explore";
 import Menu from "./menu";
 import ConceptOutline from "./outline";
 import { TextField } from "./text_field";
@@ -49,11 +53,29 @@ export interface CanvasDisplay {
   labels: boolean;
 }
 
+/** What the canvas shows and offers while exploring from a component. */
+export interface CanvasExploration {
+  /** The concept this branch started from; null in the branch explored from. */
+  base: EditableConcept | null;
+  reviewed: ComponentId[];
+  /** False once the component explored from is gone from its branch. */
+  available: boolean;
+  chip: ReactNode;
+  onTool: (tool: ExploreTool) => void;
+  onReviewed: (id: ComponentId) => void;
+  onDiscard: () => void;
+}
+
 interface ConceptCanvasProps {
   state: EditorState;
   dispatch: EditorDispatch;
+  branchTitle: string;
   display: CanvasDisplay;
   onDisplayChange: (display: CanvasDisplay) => void;
+  /** Starts editing this component, title selected, as the canvas opens. */
+  initialEditId: ComponentId | null;
+  onExplore: (id: ComponentId) => void;
+  explore: CanvasExploration | null;
 }
 
 export default function ConceptCanvas(props: ConceptCanvasProps) {
@@ -67,15 +89,20 @@ export default function ConceptCanvas(props: ConceptCanvasProps) {
 function CanvasContent({
   state,
   dispatch,
+  branchTitle,
   display,
   onDisplayChange,
+  initialEditId,
+  onExplore,
+  explore,
 }: ConceptCanvasProps) {
   const { concept, componentLayouts } = state.present;
   const { selection } = state;
   const { screenToFlowPosition, fitView } = useReactFlow();
   const containerRef = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<CanvasView>("canvas");
-  const [editingId, setEditingId] = useState<ComponentId | null>(null);
+  const [editingId, setEditingId] = useState(initialEditId);
+  const [selectingId, setSelectingId] = useState(initialEditId);
   const [draft, setDraft] = useState<{
     id: ComponentId;
     position: XYPosition;
@@ -83,12 +110,33 @@ function CanvasContent({
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const selectedAtPointerDown = useRef<string | null>(null);
 
+  const base = explore?.base;
+  const reviewed = explore?.reviewed;
+  const changes = useMemo(() => {
+    if (!base) {
+      return null;
+    }
+
+    const changed = componentChanges(base, state.present);
+    const review = connectedToChanges(base, state.present, changed);
+
+    for (const id of reviewed ?? []) {
+      review.delete(id);
+    }
+
+    return { ...changed, review };
+  }, [base, reviewed, state.present]);
+
   const blockNodes = useMemo(() => {
     const layoutById = new Map(
       componentLayouts.map((layout) => [layout.componentId, layout]),
     );
+    const baseTitles = new Map(
+      base?.concept.components.map(({ id, title }) => [id, title]),
+    );
     const blocks = concept.components.flatMap((component): BlockNodeType[] => {
       const layout = layoutById.get(component.id);
+      const previousTitle = baseTitles.get(component.id);
 
       if (!layout) {
         return [];
@@ -106,16 +154,61 @@ function CanvasContent({
             fixedWidth: layout.width !== undefined,
             minHeight: layout.height,
             editing: component.id === editingId,
+            selectTitle: component.id === selectingId,
             draft: false,
+            mark:
+              changes?.added.has(component.id) ||
+              changes?.edited.has(component.id)
+                ? "changed"
+                : changes?.review.has(component.id)
+                  ? "review"
+                  : undefined,
+            previousTitle:
+              previousTitle !== undefined && previousTitle !== component.title
+                ? previousTitle
+                : undefined,
           },
           selected:
             selection?.kind === "component" && selection.id === component.id,
         },
       ];
     });
+    const removed = (base?.componentLayouts ?? []).flatMap(
+      (layout): BlockNodeType[] => {
+        const component = base?.concept.components.find(
+          ({ id }) => id === layout.componentId,
+        );
+
+        if (!component || !changes?.removed.has(component.id)) {
+          return [];
+        }
+
+        return [
+          {
+            id: component.id,
+            type: "block",
+            position: { x: layout.x, y: layout.y },
+            width: layout.width,
+            selectable: false,
+            draggable: false,
+            connectable: false,
+            focusable: false,
+            data: {
+              component,
+              formats: layout.formats,
+              fixedWidth: layout.width !== undefined,
+              minHeight: layout.height,
+              editing: false,
+              draft: false,
+              mark: "removed",
+            },
+          },
+        ];
+      },
+    );
 
     if (!draft) {
-      return blocks;
+      return [...blocks, ...removed];
     }
 
     const draftNode: BlockNodeType = {
@@ -131,8 +224,17 @@ function CanvasContent({
       },
     };
 
-    return [...blocks, draftNode];
-  }, [concept.components, componentLayouts, draft, editingId, selection]);
+    return [...blocks, ...removed, draftNode];
+  }, [
+    concept.components,
+    componentLayouts,
+    draft,
+    editingId,
+    selectingId,
+    selection,
+    base,
+    changes,
+  ]);
 
   // React Flow keeps measured sizes and in-progress drags on its node objects,
   // so nodes are held locally and rebuilt from editor state when it changes.
@@ -155,7 +257,7 @@ function CanvasContent({
       ]),
     );
 
-    return concept.relationships.map((relationship): RelationshipEdgeType => {
+    const edge = (relationship: ConceptRelationship): RelationshipEdgeType => {
       const leftToRight =
         (centreX.get(relationship.sourceComponentId) ?? 0) <=
         (centreX.get(relationship.targetComponentId) ?? 0);
@@ -172,8 +274,28 @@ function CanvasContent({
           selection?.kind === "relationship" &&
           selection.id === relationship.id,
       };
-    });
-  }, [concept.relationships, nodes, selection]);
+    };
+    // Connections that went with a removed component, drawn faintly too.
+    const removed = (base?.concept.relationships ?? [])
+      .filter(
+        ({ sourceComponentId, targetComponentId }) =>
+          (changes?.removed.has(sourceComponentId) ||
+            changes?.removed.has(targetComponentId)) &&
+          centreX.has(sourceComponentId) &&
+          centreX.has(targetComponentId),
+      )
+      .map(
+        (relationship): RelationshipEdgeType => ({
+          ...edge(relationship),
+          data: { relationship, removed: true },
+          className: "is-removed",
+          selectable: false,
+          focusable: false,
+        }),
+      );
+
+    return [...concept.relationships.map(edge), ...removed];
+  }, [concept.relationships, nodes, selection, base, changes]);
 
   function createDraft(position: XYPosition) {
     const id = crypto.randomUUID();
@@ -222,6 +344,7 @@ function CanvasContent({
       stopEditing: (id: ComponentId) => {
         setDraft((current) => (current?.id === id ? null : current));
         setEditingId((current) => (current === id ? null : current));
+        setSelectingId(null);
       },
       commitField: (
         id: ComponentId,
@@ -312,7 +435,31 @@ function CanvasContent({
         return;
       }
 
-      if (view !== "canvas" || !selection) {
+      if (view !== "canvas") {
+        return;
+      }
+
+      // Escape steps out: first of the selection, then of exploring.
+      if (event.key === "Escape" && !selection && explore) {
+        event.preventDefault();
+        explore.onDiscard();
+        return;
+      }
+
+      if (!selection) {
+        return;
+      }
+
+      if (
+        key === "e" &&
+        !explore &&
+        selection.kind === "component" &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey
+      ) {
+        event.preventDefault();
+        onExplore(selection.id);
         return;
       }
 
@@ -339,9 +486,16 @@ function CanvasContent({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [dispatch, selection, view]);
+  }, [dispatch, selection, view, explore, onExplore]);
 
-  const header = <ConceptHeader concept={concept} dispatch={dispatch} />;
+  const header = (
+    <ConceptHeader
+      concept={concept}
+      branchTitle={branchTitle}
+      reviewCount={changes?.review.size ?? 0}
+      dispatch={dispatch}
+    />
+  );
 
   return (
     <CanvasActionsContext value={actions}>
@@ -407,7 +561,7 @@ function CanvasContent({
               onNodeContextMenu={(event, node) => {
                 event.preventDefault();
 
-                if (node.id === draft?.id) {
+                if (node.id === draft?.id || node.data.mark === "removed") {
                   return;
                 }
 
@@ -419,6 +573,22 @@ function CanvasContent({
                   x: event.clientX,
                   y: event.clientY,
                   items: [
+                    ...(explore
+                      ? []
+                      : [
+                          {
+                            label: "Explore From Here",
+                            onSelect: () => onExplore(node.id),
+                          },
+                        ]),
+                    ...(node.data.mark === "review"
+                      ? [
+                          {
+                            label: "Mark Reviewed",
+                            onSelect: () => explore?.onReviewed(node.id),
+                          },
+                        ]
+                      : []),
                     {
                       label: "Edit Text",
                       onSelect: () => setEditingId(node.id),
@@ -522,6 +692,11 @@ function CanvasContent({
               {header}
             </div>
             <DisplayMenu display={display} onChange={onDisplayChange} />
+            {explore && (
+              <div className="absolute bottom-20 left-1/2 z-10 -translate-x-1/2">
+                {explore.chip}
+              </div>
+            )}
             {nodes.length === 0 && (
               <EmptyState
                 onSubmit={(title) => {
@@ -557,6 +732,14 @@ function CanvasContent({
           view={view}
           onViewChange={setView}
           onAdd={() => createDraft(centrePosition())}
+          onExplore={
+            selection?.kind === "component"
+              ? () => onExplore(selection.id)
+              : null
+          }
+          explore={
+            explore && { onTool: explore.onTool, available: explore.available }
+          }
           onFit={fitToContent}
           canUndo={state.undoStack.length > 0}
           canRedo={state.redoStack.length > 0}
@@ -580,9 +763,14 @@ function pluralise(count: number, noun: string) {
 
 function ConceptHeader({
   concept,
+  branchTitle,
+  reviewCount,
   dispatch,
 }: {
   concept: Concept;
+  branchTitle: string;
+  /** Components connected to changes made while exploring. */
+  reviewCount: number;
   dispatch: EditorDispatch;
 }) {
   return (
@@ -602,9 +790,17 @@ function ConceptHeader({
         }
       />
       <p className="mt-1 text-small text-(--text-tertiary)">
+        {branchTitle}
+        <span aria-hidden="true">{"  ·  "}</span>
         {pluralise(concept.components.length, "Component")}
         <span aria-hidden="true">{"  ·  "}</span>
         {pluralise(concept.relationships.length, "Connection")}
+        {reviewCount > 0 && (
+          <>
+            <span aria-hidden="true">{"  ·  "}</span>
+            <span className="text-(--attention)">{reviewCount} to Review</span>
+          </>
+        )}
       </p>
     </header>
   );

@@ -168,15 +168,15 @@ current session state.
 
 ### 3.2 Explore From a Component
 
-- [ ] Explore from a selected component as a mode, showing its branches in a
+- [x] Explore from a selected component as a mode, showing its branches in a
   chip. Done keeps them; Discard or Esc drops them.
-- [ ] Change the bottom bar's tools by mode, always keeping Undo and Redo.
-- [ ] Substitute, constrain or temporarily remove a component in a branch.
-- [ ] Mark explicitly connected components that may need review with the
+- [x] Change the bottom bar's tools by mode, always keeping Undo and Redo.
+- [x] Substitute, constrain or temporarily remove a component in a branch.
+- [x] Mark explicitly connected components that may need review with the
   attention box, the only box shown besides selection.
-- [ ] Keep possible consequences visually distinct from changes the user has
+- [x] Keep possible consequences visually distinct from changes the user has
   made.
-- [ ] Keep the current branch and save state visible throughout editing.
+- [x] Keep the current branch and save state visible throughout editing.
 
 ### 3.3 Compare Branches Side by Side
 

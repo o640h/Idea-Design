@@ -38,6 +38,7 @@ import {
   editorReducer,
 } from "@/lib/concepts/editor";
 import type {
+  ComponentId,
   ConceptId,
   EditableConcept,
   Workspace,
@@ -52,6 +53,12 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import ConceptCanvas, { type CanvasDisplay } from "./canvas";
 import ConceptPanel from "./concept_panel";
+import {
+  type Exploration,
+  ExploreChip,
+  type ExploreTool,
+  toolBranch,
+} from "./explore";
 import Menu from "./menu";
 import {
   type SaveStatus,
@@ -244,6 +251,12 @@ export default function ConceptEditor({
   /** The new checkpoint's name while it is being chosen. */
   const [checkpointName, setCheckpointName] = useState<string | null>(null);
   const [renamingBranchId, setRenamingBranchId] = useState<string | null>(null);
+  const [exploration, setExploration] = useState<Exploration | null>(null);
+  /** A component to start editing once its branch opens. */
+  const [initialEdit, setInitialEdit] = useState<{
+    branchId: string;
+    componentId: ComponentId;
+  } | null>(null);
   const loading = useRef(new Set<string>());
   const sync = useSync(concepts, setConcepts);
 
@@ -259,6 +272,25 @@ export default function ConceptEditor({
     )
     .reverse();
   const liveConcepts = concepts.filter(({ deletedAt }) => !deletedAt);
+  const exploredBranch = exploration?.branches.find(
+    ({ id }) => id === activeBranch.id,
+  );
+  // As it is in the original branch, which every explore tool starts from.
+  const exploredComponent = activeConcept.branches
+    .find(({ id }) => id === exploration?.originBranchId)
+    ?.editor?.present.concept.components.find(
+      ({ id }) => id === exploration?.componentId,
+    );
+
+  // Opening any other branch keeps what was explored and stops exploring.
+  if (
+    exploration &&
+    !exploredBranch &&
+    (exploration.conceptId !== activeConcept.id ||
+      exploration.originBranchId !== activeBranch.id)
+  ) {
+    setExploration(null);
+  }
 
   const dispatchTo = useCallback(
     (branchId: string, action: EditorAction, options?: ChangeOptions) =>
@@ -321,6 +353,7 @@ export default function ConceptEditor({
 
     setActiveId(conceptId);
     setActiveBranchId(branchId);
+    setInitialEdit(null);
     setCookie("last_concept", conceptId);
     setCookie("last_branch", branchId);
 
@@ -418,19 +451,23 @@ export default function ConceptEditor({
   }
 
   /**
-   * Adds a branch that starts from a revision and opens it, ready to name.
-   * The parent named by `sealing` stops merging edits into its pending
-   * change, so later edits there are not saved before the revision.
+   * Adds a branch that starts from a revision and opens it, ready to name
+   * unless it is given a title. The parent named by `sealing` stops merging
+   * edits into its pending change, so later edits there are not saved before
+   * the revision.
    */
   function addBranch(
     concept: SessionConcept,
     sourceRevisionId: string,
     editor: EditorState,
-    sealing?: { parentId: string; revision: Revision },
+    {
+      sealing,
+      title,
+    }: { sealing?: { parentId: string; revision: Revision }; title?: string },
   ) {
     const branch: SessionBranch = {
       id: crypto.randomUUID(),
-      title: `Alternative ${concept.branches.length}`,
+      title: title ?? `Alternative ${concept.branches.length}`,
       main: false,
       archivedAt: null,
       sourceRevisionId,
@@ -462,20 +499,35 @@ export default function ConceptEditor({
     );
     selectBranch(concept.id, branch.id);
 
-    if (panelOpen) {
+    if (panelOpen && title === undefined) {
       setRenamingBranchId(branch.id);
     }
+
+    return branch.id;
   }
 
-  /** Branches from what a branch shows now, unsaved edits included. */
   async function branchFrom(conceptId: ConceptId, parentId: string) {
     const concept = concepts.find(({ id }) => id === conceptId);
     const parent = concept && (await load(concept, parentId));
 
-    if (!concept || !parent) {
-      return;
+    if (concept && parent) {
+      branchFromEditor(concept, parentId, parent);
     }
+  }
 
+  /**
+   * Branches from what a branch shows now, unsaved edits included, and
+   * applies `operations` there as the branch's first undoable change.
+   */
+  function branchFromEditor(
+    concept: SessionConcept,
+    parentId: string,
+    parent: EditorState,
+    {
+      title,
+      operations = [],
+    }: { title?: string; operations?: Operation[] } = {},
+  ) {
     const revision: Revision = {
       id: crypto.randomUUID(),
       branchId: parentId,
@@ -494,11 +546,18 @@ export default function ConceptEditor({
       revisionKind: "branch",
       title: null,
     });
-    addBranch(
+    const editor = {
+      ...createEditorState(parent.present),
+      viewport: parent.viewport,
+    };
+
+    return addBranch(
       concept,
       revision.id,
-      { ...createEditorState(parent.present), viewport: parent.viewport },
-      { parentId, revision },
+      operations.length
+        ? editorReducer(editor, { type: "change", operations })
+        : editor,
+      { sealing: { parentId, revision }, title },
     );
   }
 
@@ -525,7 +584,83 @@ export default function ConceptEditor({
       concept,
       revision.id,
       viewport ? { ...editor, viewport } : editor,
+      {},
     );
+  }
+
+  function startExploring(componentId: ComponentId) {
+    setExploration({
+      conceptId: activeConcept.id,
+      originBranchId: activeBranch.id,
+      componentId,
+      branches: [],
+    });
+  }
+
+  /** Makes a branch from the original with the tool applied, and opens it. */
+  function exploreWith(tool: ExploreTool) {
+    const concept = concepts.find(({ id }) => id === exploration?.conceptId);
+    const origin = concept?.branches.find(
+      ({ id }) => id === exploration?.originBranchId,
+    )?.editor;
+    const component = origin?.present.concept.components.find(
+      ({ id }) => id === exploration?.componentId,
+    );
+
+    if (!exploration || !concept || !origin || !component) {
+      return;
+    }
+
+    const { title, operations, editId } = toolBranch(
+      tool,
+      origin.present,
+      component,
+    );
+    const branchId = branchFromEditor(
+      concept,
+      exploration.originBranchId,
+      origin,
+      { title, operations },
+    );
+
+    setExploration({
+      ...exploration,
+      branches: [
+        ...exploration.branches,
+        { id: branchId, base: origin.present, reviewed: [] },
+      ],
+    });
+    setInitialEdit(editId ? { branchId, componentId: editId } : null);
+  }
+
+  /** Archives the branches made while exploring and returns to the original. */
+  function discardExploration() {
+    if (!exploration) {
+      return;
+    }
+
+    const archivedAt = new Date().toISOString();
+    const ids = new Set(exploration.branches.map(({ id }) => id));
+
+    for (const branchId of ids) {
+      sync.enqueue({
+        kind: "archive-branch",
+        id: crypto.randomUUID(),
+        branchId,
+        archivedAt,
+      });
+    }
+
+    setConcepts((current) =>
+      updateConcept(current, exploration.conceptId, (concept) => ({
+        ...concept,
+        branches: concept.branches.map((branch) =>
+          ids.has(branch.id) ? { ...branch, archivedAt } : branch,
+        ),
+      })),
+    );
+    setExploration(null);
+    selectBranch(exploration.conceptId, exploration.originBranchId);
   }
 
   function saveCheckpoint(title: string) {
@@ -939,8 +1074,59 @@ export default function ConceptEditor({
                 key={activeBranch.id}
                 state={activeBranch.editor}
                 dispatch={dispatch}
+                branchTitle={activeBranch.title}
                 display={display}
                 onDisplayChange={setDisplay}
+                initialEditId={
+                  initialEdit?.branchId === activeBranch.id
+                    ? initialEdit.componentId
+                    : null
+                }
+                onExplore={startExploring}
+                explore={
+                  exploration && {
+                    base: exploredBranch?.base ?? null,
+                    reviewed: exploredBranch?.reviewed ?? [],
+                    available: Boolean(exploredComponent),
+                    chip: (
+                      <ExploreChip
+                        componentTitle={exploredComponent?.title ?? ""}
+                        origin={{
+                          id: exploration.originBranchId,
+                          title:
+                            activeConcept.branches.find(
+                              ({ id }) => id === exploration.originBranchId,
+                            )?.title ?? "",
+                        }}
+                        branches={activeConcept.branches.filter(({ id }) =>
+                          exploration.branches.some(
+                            (branch) => branch.id === id,
+                          ),
+                        )}
+                        activeBranchId={activeBranch.id}
+                        onSelect={(branchId) =>
+                          selectBranch(exploration.conceptId, branchId)
+                        }
+                        onDiscard={discardExploration}
+                        onDone={() => setExploration(null)}
+                      />
+                    ),
+                    onTool: exploreWith,
+                    onReviewed: (componentId) =>
+                      setExploration({
+                        ...exploration,
+                        branches: exploration.branches.map((branch) =>
+                          branch.id === activeBranch.id
+                            ? {
+                                ...branch,
+                                reviewed: [...branch.reviewed, componentId],
+                              }
+                            : branch,
+                        ),
+                      }),
+                    onDiscard: discardExploration,
+                  }
+                }
               />
             )}
           </main>
