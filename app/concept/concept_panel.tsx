@@ -8,6 +8,7 @@ import {
   FilePlusCorner,
   FolderPlus,
   type LucideIcon,
+  Squircle,
 } from "lucide-react";
 import { type MouseEvent, useEffect, useRef, useState } from "react";
 import type { ConceptId } from "@/lib/concepts/model";
@@ -97,10 +98,15 @@ function RenameField({
     <div
       className={`flex items-center rounded-sm bg-(--surface-active) ${kind === "Branch" ? "h-6 gap-1.5 pl-5.5 pr-1" : "h-7 gap-2 px-2"}`}
     >
-      <span
-        aria-hidden="true"
-        className={kind === "Branch" ? "branch-dot" : "concept-icon"}
-      />
+      {kind === "Branch" ? (
+        <span aria-hidden="true" className="branch-dot" />
+      ) : (
+        <Squircle
+          aria-hidden="true"
+          className="concept-icon"
+          strokeWidth={2.75}
+        />
+      )}
       <TextField
         ref={inputRef}
         singleLine
@@ -115,16 +121,17 @@ function RenameField({
   );
 }
 
-/**
- * A concept's square and name. The square rests on the name's baseline rather
- * than being centred in the row, so it stays level with the capitals at any
- * zoom; the font's metrics leave the text off-centre in its line box.
- */
 function ConceptLabel({ title }: { title: string }) {
   return (
-    <span className="flex min-w-0 items-baseline gap-2">
-      <span aria-hidden="true" className="concept-icon" />
-      <span className="truncate">{title || "Untitled Concept"}</span>
+    <span className="flex min-w-0 items-center gap-2">
+      <Squircle
+        aria-hidden="true"
+        className="concept-icon"
+        strokeWidth={2.75}
+      />
+      <span className="concept-label-text truncate">
+        {title || "Untitled Concept"}
+      </span>
     </span>
   );
 }

@@ -372,7 +372,6 @@ function RemovedBlock({
         className="block-handle"
       />
       <p className="block-note">Removed</p>
-      {component.tag && <p className="eyebrow block-tag">{component.tag}</p>}
       <p className="block-title" style={textStyle(formats.title)}>
         {component.title || "Untitled"}
       </p>
@@ -381,6 +380,7 @@ function RemovedBlock({
           {component.description}
         </p>
       )}
+      {component.tag && <p className="eyebrow block-tag">{component.tag}</p>}
     </div>
   );
 }
@@ -451,8 +451,6 @@ export const BlockNode = memo(function BlockNode({
         className="block-handle"
       />
 
-      {component.tag && <p className="eyebrow block-tag">{component.tag}</p>}
-
       {editing ? (
         <BlockEditor
           component={component}
@@ -492,6 +490,8 @@ export const BlockNode = memo(function BlockNode({
           )}
         </>
       )}
+
+      {component.tag && <p className="eyebrow block-tag">{component.tag}</p>}
 
       <NodeToolbar
         isVisible={(selected || editing) && !dragging && !draft}

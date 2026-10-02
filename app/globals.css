@@ -195,10 +195,14 @@ select:not(:disabled) {
 
 .concept-icon {
   flex-shrink: 0;
-  width: 9px;
-  height: 9px;
-  border: 1px solid currentColor;
-  border-radius: 2px;
+  width: 11px;
+  height: 11px;
+}
+
+/* Centre the letters with the icon, excluding the font's extra line space. */
+.concept-label-text {
+  text-box: trim-both cap alphabetic;
+  overflow: clip visible;
 }
 
 /* Starts inside its row, clear of the hover box above, and turns at the
@@ -206,12 +210,12 @@ select:not(:disabled) {
 .branch-line {
   position: absolute;
   top: 4px;
-  left: 12px;
+  left: 13px;
   width: 5px;
   height: 9px;
-  border-bottom: 1px solid var(--connector);
-  border-left: 1px solid var(--connector);
-  border-bottom-left-radius: 1px;
+  border-bottom: 1.5px solid var(--connector);
+  border-left: 1.5px solid var(--connector);
+  border-bottom-left-radius: 1.5px;
 }
 
 .branch-dot {
@@ -323,6 +327,7 @@ select:not(:disabled) {
 /* The width scales with the title size set from the format bar, until the
    block is resized to a width of its own. */
 .concept-block {
+  position: relative;
   width: max-content;
   min-width: 96px;
   max-width: calc(20em + 26px);
@@ -377,9 +382,49 @@ select:not(:disabled) {
 }
 
 .concept-block .block-tag {
-  margin-bottom: 5px;
-  letter-spacing: 0.08em;
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  width: fit-content;
+  max-width: calc(100% - 24px);
+  padding: 2px 8px 0 0;
+  font-size: var(--text-small);
+  line-height: 1.2;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--text-tertiary) 75%, var(--surface-canvas));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 220ms ease;
+}
+
+.concept-block .block-tag::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 5px;
+  height: 5px;
+  border-top: 1px solid var(--text-tertiary);
+  border-right: 1px solid var(--text-tertiary);
+  opacity: 0.9;
+  transition:
+    opacity 220ms ease,
+    border-color 220ms ease;
+}
+
+.concept-block:is(:hover, :focus-within, .is-selected) .block-tag {
   color: var(--text-tertiary);
+}
+
+.concept-block:is(:hover, :focus-within, .is-selected) .block-tag::after {
+  border-color: var(--text-primary);
+  opacity: 1;
+}
+
+.concept-canvas[data-labels] .concept-block:has(.block-tag) {
+  padding-top: 32px;
 }
 
 .concept-canvas:not([data-labels]) .block-tag {
@@ -819,7 +864,7 @@ button.compare-branch:hover {
 .rail-item:has(:focus-visible) .rail-tooltip {
   opacity: 1;
   translate: 0 -50%;
-  transition-delay: 350ms;
+  transition-delay: 900ms;
 }
 
 .rail-tooltip kbd,
@@ -942,6 +987,7 @@ button.compare-branch:hover {
 @media (prefers-reduced-motion: reduce) {
   .concept-block,
   .concept-block *,
+  .concept-block .block-tag::after,
   .canvas-orb,
   .collapsible,
   .save-indicator,
